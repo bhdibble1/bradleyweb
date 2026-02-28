@@ -90,4 +90,10 @@ def create_app(config_class=None):
         from .add_book_product import add_book_product
         add_book_product()
 
+    @app.cli.command('add-mug-product')
+    def add_mug_product_cmd():
+        """Add the mug product to the store. Run: flask add-mug-product"""
+        from .add_mug_product import add_mug_product
+        add_mug_product()
+
     return app
