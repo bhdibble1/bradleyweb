@@ -10,11 +10,11 @@
         <h1 class="mb-4">Free 30-Day Guide to Quit Nicotine</h1>
         <p class="lead text-muted mb-5">Enter your email below to get the guide delivered to your inbox.</p>
 
-        <div class="mb-5">
-          <img src="{{ book_image_url or 'https://via.placeholder.com/320x480/1a1a1a/ffffff?text=Your+Book' }}"
+        <div class="mb-4 text-center">
+          <img src="{{ 'https://res.cloudinary.com/dzt95pn0s/image/upload/v1772316433/ChatGPT_Image_Feb_28_2026_01_55_37_PM_eut23z.png' }}"
                alt="30-day guide to quit nicotine"
-               class="img-fluid shadow rounded"
-               style="max-width: 280px;">
+               class="img-fluid shadow rounded mx-auto d-block"
+               style="max-width: 180px;">
         </div>
 
         <div class="bg-light rounded p-4 mb-4" style="max-width: 400px; margin: 0 auto;">
@@ -30,6 +30,9 @@
             <button type="submit" class="button w-100">Get the free guide</button>
           </form>
         </div>
+        <p class="small text-muted mt-3">
+          <a href="{{ url_for('main.free_resources') }}">← Back to free resources</a>
+        </p>
       </div>
     </div>
   </div>

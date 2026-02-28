@@ -1,0 +1,25 @@
+{% extends "navbar.html" %}
+
+{% block title %}Free resources{% endblock %}
+
+{% block content %}
+<section class="py-5" style="margin-top: 80px;">
+  <div class="container">
+    <h1 class="mb-2">Free resources</h1>
+    <p class="text-muted mb-4">Guides and downloads you can use right away. No sign-up required for most.</p>
+
+    <div class="row g-4">
+      <div class="col-md-6 col-lg-4">
+        <div class="card h-100 shadow-sm border-0 rounded-3 overflow-hidden">
+          <div class="card-body p-4 d-flex flex-column">
+            <span class="badge bg-success mb-2 align-self-start">Free</span>
+            <h2 class="h5 mb-2">Free 30-day quit nicotine guide</h2>
+            <p class="text-muted small mb-3 flex-grow-1">A step-by-step guide to help you quit nicotine. Get the PDF and support delivered to your inbox.</p>
+            <a href="{{ url_for('main.quit_nicotine_guide') }}" class="button align-self-start">Get the guide</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}

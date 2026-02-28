@@ -12,13 +12,23 @@
     <div class="row justify-content-center mb-5">
       <div class="col-lg-8">
         <div class="card shadow-sm border-success">
-          <div class="card-header bg-dark text-white d-flex align-items-center justify-content-between">
+          <div class="card-header bg-dark text-white d-flex align-items-center justify-content-between flex-wrap gap-2">
             <span><i class="bi bi-star-fill text-warning mr-2"></i>Your membership: {{ tier_labels.get(membership.tier, membership.tier) }}</span>
-            <span class="badge badge-success">Active</span>
+            {% if membership.cancel_at_period_end %}
+            <span class="badge bg-warning text-dark">Cancels at period end</span>
+            {% else %}
+            <span class="badge bg-success">Active</span>
+            {% endif %}
           </div>
           <div class="card-body">
             {% if membership.current_period_end %}
-            <p class="text-muted mb-3">Current period ends: {{ membership.current_period_end.strftime('%B %d, %Y') if membership.current_period_end else '—' }}</p>
+            <p class="text-muted mb-3">
+              {% if membership.cancel_at_period_end %}
+              Access until: {{ membership.current_period_end.strftime('%B %d, %Y') }}
+              {% else %}
+              Current period ends: {{ membership.current_period_end.strftime('%B %d, %Y') }}
+              {% endif %}
+            </p>
             {% endif %}
             <div class="d-flex flex-wrap gap-2 justify-content-center">
               <a href="{{ url_for('main.premium_portal') }}" class="button">Manage subscription</a>
@@ -28,6 +38,23 @@
       </div>
     </div>
     <h2 class="text-center h5 mb-4">Upgrade or change plan</h2>
+    {% elif latest_membership and latest_membership.status == 'canceled' %}
+    <div class="row justify-content-center mb-5">
+      <div class="col-lg-8">
+        <div class="card shadow-sm border-secondary">
+          <div class="card-header bg-secondary text-white d-flex align-items-center justify-content-between">
+            <span><i class="bi bi-info-circle mr-2"></i>Previous membership: {{ tier_labels.get(latest_membership.tier, latest_membership.tier) }}</span>
+            <span class="badge bg-secondary">Ended</span>
+          </div>
+          <div class="card-body">
+            {% if latest_membership.canceled_at %}
+            <p class="text-muted mb-3">Ended on: {{ latest_membership.canceled_at.strftime('%B %d, %Y') }}</p>
+            {% endif %}
+            <p class="mb-0">Resubscribe below to get access again.</p>
+          </div>
+        </div>
+      </div>
+    </div>
     {% endif %}
 
     <div class="row justify-content-center">
@@ -61,6 +88,8 @@
                 <input type="hidden" name="tier" value="early_bird_gold">
                 <button type="submit" class="button w-100">Upgrade</button>
               </form>
+            {% elif not current_user.is_authenticated %}
+              <a href="{{ url_for('main.login', next=url_for('main.premium')) }}" class="button w-100 d-block text-center mt-auto">Log in to subscribe</a>
             {% else %}
               <form method="POST" action="{{ url_for('main.create_membership_checkout_session') }}" class="mt-auto">
                 {{ form.hidden_tag() }}
@@ -88,6 +117,8 @@
             </ul>
             {% if membership and membership.tier == 'regular' %}
               <p class="text-center text-success font-weight-bold mb-0 mt-auto">Current plan</p>
+            {% elif not current_user.is_authenticated %}
+              <a href="{{ url_for('main.login', next=url_for('main.premium')) }}" class="button w-100 d-block text-center mt-auto">Log in to subscribe</a>
             {% else %}
               <form method="POST" action="{{ url_for('main.create_membership_checkout_session') }}" class="mt-auto">
                 {{ form.hidden_tag() }}
@@ -114,6 +145,8 @@
             </ul>
             {% if membership and membership.tier == 'gold' %}
               <p class="text-center text-success font-weight-bold mb-0 mt-auto">Current plan</p>
+            {% elif not current_user.is_authenticated %}
+              <a href="{{ url_for('main.login', next=url_for('main.premium')) }}" class="button w-100 d-block text-center mt-auto">Log in to subscribe</a>
             {% elif membership %}
               <form method="POST" action="{{ url_for('main.create_membership_checkout_session') }}" class="mt-auto">
                 {{ form.hidden_tag() }}

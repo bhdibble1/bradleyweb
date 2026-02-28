@@ -55,6 +55,7 @@ class Order(db.Model):
     status = db.Column(db.String(32), default="pending")  # optional if you already have it
     inventory_reduced = db.Column(db.Boolean, default=False, nullable=True)
     confirmation_sent = db.Column(db.Boolean, default=False, nullable=True)
+    stripe_session_id = db.Column(db.String(255), nullable=True, unique=True)  # idempotency for webhook + redirect
 
     def __repr__(self):
         return f"Order('{self.id}', '{self.order_date}', '{self.total}', '{self.user_id}')"
@@ -90,6 +91,8 @@ class Membership(db.Model):
     current_period_end = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.DateTime, nullable=False, default=db.func.current_timestamp())
     link_code = db.Column(db.String(64), unique=True, nullable=True)  # one-time code to link guest subscription to account
+    canceled_at = db.Column(db.DateTime, nullable=True)  # when subscription was canceled (we keep row for history)
+    cancel_at_period_end = db.Column(db.Boolean, default=False, nullable=False)  # user canceled but has access until period end
 
     def __repr__(self):
         return f"<Membership {self.tier} user={self.user_id} status={self.status}>"

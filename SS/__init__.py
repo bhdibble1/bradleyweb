@@ -6,11 +6,13 @@ from flask_login import LoginManager
 from flask_migrate import Migrate
 import stripe
 
-# Load .env so USE_SQLITE / DATABASE_URL are set when running "python app.py" (not just "flask run")
+# Load .env from project root so vars are set regardless of cwd
 try:
     from dotenv import load_dotenv
-    load_dotenv()
-except ImportError:
+    from pathlib import Path
+    _root = Path(__file__).resolve().parent.parent
+    load_dotenv(_root / ".env")
+except Exception:
     pass
 
 # Initialize extensions
@@ -20,7 +22,9 @@ login_manager = LoginManager()
 migrate = Migrate()
 
 def create_app(config_class=None):
-    app = Flask(__name__, instance_relative_config=True)
+    import os as _os
+    _static = _os.path.join(_os.path.dirname(__file__), "static")
+    app = Flask(__name__, instance_relative_config=True, static_folder=_static)
 
     # Inject cart total into templates
     @app.context_processor

@@ -1,0 +1,155 @@
+{% extends "navbar.html" %}
+
+{% block title %}Getting into Medical School{% endblock %}
+
+{% block content %}
+<style>
+  .course-module__chevron { transition: transform 0.2s ease; }
+  .btn-course-primary { background-color: #3224f0; border-color: #3224f0; color: #fff; }
+  .btn-course-primary:hover { background-color: #281bd4; border-color: #281bd4; color: #fff; }
+  .course-hero { margin-top: var(--header-height, 80px); }
+  .course-cta-card {
+    background: linear-gradient(160deg, #f8f7ff 0%, #f0eeff 100%);
+    border: 1px solid rgba(50, 36, 240, 0.12);
+    border-radius: 1rem;
+    padding: 2rem 1.75rem;
+  }
+  .course-cta-option {
+    flex: 1;
+    min-width: 0;
+    max-width: 20rem;
+    background: #fff;
+    border: 1px solid rgba(50, 36, 240, 0.15);
+    border-radius: 0.75rem;
+    padding: 1.5rem 1.25rem;
+    text-align: center;
+  }
+  .course-cta-option .btn { width: 100%; font-weight: 600; padding: 0.6rem 1rem; }
+  .course-cta-option .cta-desc { font-size: 0.8rem; color: #6b7280; margin-top: 0.65rem; line-height: 1.4; }
+  .btn-outline-course { color: #3224f0; border-color: #3224f0; }
+  .btn-outline-course:hover { background-color: rgba(50, 36, 240, 0.08); color: #281bd4; border-color: #281bd4; }
+</style>
+<section class="course-hero" style="padding: clamp(2.5rem, 6vw, 4.5rem) 0 0;">
+  <div class="container">
+    <div class="row justify-content-center">
+      <div class="col-lg-9 col-xl-8 text-center">
+        <h1 class="mb-3" style="font-size: clamp(1.75rem, 4vw, 2.25rem); font-weight: 700; color: var(--dark-color, #0f0f0f); line-height: 1.25;">
+          Getting into Medical School
+        </h1>
+        <p class="lead text-muted mb-0" style="font-size: 1.1rem; max-width: 32rem; margin-left: auto; margin-right: auto;">
+          A structured path from pre-med to acceptance. Work through the modules in order at your own pace.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+{% if not can_access %}
+<section class="container pb-4" style="padding-top: 1.5rem;">
+  <div class="row justify-content-center">
+    <div class="col-lg-10">
+      <p class="text-center text-muted mb-3" style="font-size: 0.95rem;">Unlock this course and start learning.</p>
+      <div class="d-flex flex-column flex-md-row justify-content-center align-items-stretch gap-4">
+        <div class="course-cta-option">
+          <a href="{{ url_for('main.premium') }}" class="btn btn-course-primary">Upgrade to Gold</a>
+          <p class="cta-desc mb-0">All courses, exclusive content, ad-free videos, group chat &amp; more. One monthly fee, cancel anytime.</p>
+        </div>
+        <div class="course-cta-option">
+          {% if current_user.is_authenticated %}
+          <a href="{{ url_for('main.course_medical_school_buy') }}" class="btn btn-outline-course">Preorder</a>
+          {% else %}
+          <a href="{{ url_for('main.login', next=url_for('main.course_medical_school_buy')) }}" class="btn btn-outline-course">Preorder</a>
+          {% endif %}
+          <p class="cta-desc mb-0">$97 one-time. Course not out yet — preorder for permanent access when it launches.</p>
+        </div>
+      </div>
+      {% if not current_user.is_authenticated %}
+      <p class="text-center small text-muted mt-3 mb-0">Already have an account? <a href="{{ url_for('main.login', next=url_for('main.course_medical_school')) }}">Log in</a></p>
+      {% endif %}
+    </div>
+  </div>
+</section>
+{% endif %}
+
+<section class="course-modules py-4 py-md-5">
+  <div class="container">
+    <div class="row justify-content-center">
+      <div class="col-lg-10">
+        <h2 class="h5 text-muted text-uppercase mb-4" style="letter-spacing: 0.08em;">Curriculum</h2>
+
+        <div class="course-modules__list">
+          {% for module_data in modules_lessons %}
+          {% set module_num = loop.index %}
+          {% set module_title = module_data[0] %}
+          {% set module_description = module_data[1] %}
+          {% set lesson_titles = module_data[2] %}
+          <article class="course-module border rounded-3 shadow-sm mb-3" style="background: var(--white-color); border-color: var(--border, #e5e7eb) !important; min-height: 5rem;">
+            <div class="p-4 py-3 d-flex align-items-start course-module__header" style="gap: 1.25rem; cursor: pointer;" data-toggle="collapse" data-target="#lessons-{{ module_num }}" aria-expanded="false" aria-controls="lessons-{{ module_num }}">
+              <span class="course-module__num rounded-circle d-flex align-items-center justify-content-center flex-shrink-0 fw-bold text-white" style="width: 2.5rem; height: 2.5rem; background: var(--dark-color); font-size: var(--text-sm);">{{ module_num }}</span>
+              <div class="flex-grow-1">
+                <h3 class="h6 mb-1 fw-semibold">{{ module_title }}</h3>
+                <p class="text-muted small mb-0">{{ module_description }}</p>
+              </div>
+              <i class="bi bi-chevron-down text-muted align-self-center course-module__chevron"></i>
+            </div>
+            <div id="lessons-{{ module_num }}" class="collapse border-top" style="border-color: var(--border) !important;">
+              <ul class="list-unstyled mb-0 py-3 px-4" style="padding-left: calc(2.5rem + 1.25rem) !important;">
+                {% for lesson_title in lesson_titles %}
+                {% set lesson_num = loop.index %}
+                <li class="py-2 text-muted small">
+                  {% if can_access %}
+                  <a href="{{ url_for('main.course_medical_school_lesson', module_num=module_num, lesson_num=lesson_num) }}" class="text-decoration-none text-body">
+                    <i class="bi bi-play-circle mr-2"></i>{{ lesson_title }}
+                  </a>
+                  {% else %}
+                  <i class="bi bi-play-circle mr-2"></i>{{ lesson_title }}
+                  {% endif %}
+                </li>
+                {% endfor %}
+              </ul>
+            </div>
+          </article>
+          {% endfor %}
+        </div>
+
+        {% if can_access %}
+        <p class="text-muted small mt-4 mb-0">Content for each lesson is coming soon. You have full access.</p>
+        {% else %}
+        <div class="course-cta-card border-0 mt-4">
+          <p class="mb-3 fw-semibold">Want full access?</p>
+          <div class="d-flex flex-column flex-md-row justify-content-center align-items-stretch gap-4">
+            <div class="course-cta-option">
+              <a href="{{ url_for('main.premium') }}" class="btn btn-course-primary">Upgrade to Gold</a>
+              <p class="cta-desc mb-0">All courses, exclusive content, ad-free videos &amp; more.</p>
+            </div>
+            <div class="course-cta-option">
+              {% if current_user.is_authenticated %}
+              <a href="{{ url_for('main.course_medical_school_buy') }}" class="btn btn-outline-course">Preorder</a>
+              {% else %}
+              <a href="{{ url_for('main.login', next=url_for('main.course_medical_school_buy')) }}" class="btn btn-outline-course">Preorder</a>
+              {% endif %}
+              <p class="cta-desc mb-0">$97 one-time. Course not out yet — preorder for permanent access.</p>
+            </div>
+          </div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</section>
+<script>
+document.querySelectorAll('.course-module [data-toggle="collapse"]').forEach(function(btn) {
+  var targetId = btn.getAttribute('data-target');
+  var target = targetId ? document.querySelector(targetId) : null;
+  if (!target) return;
+  target.addEventListener('show.bs.collapse', function() {
+    var chevron = btn.querySelector('.course-module__chevron');
+    if (chevron) chevron.style.transform = 'rotate(180deg)';
+  });
+  target.addEventListener('hide.bs.collapse', function() {
+    var chevron = btn.querySelector('.course-module__chevron');
+    if (chevron) chevron.style.transform = '';
+  });
+});
+</script>
+{% endblock %}

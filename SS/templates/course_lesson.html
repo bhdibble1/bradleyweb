@@ -1,0 +1,31 @@
+{% extends "navbar.html" %}
+
+{% block title %}{{ lesson_title }} — {{ course_title }}{% endblock %}
+
+{% block content %}
+<section class="py-4" style="margin-top: var(--header-height, 80px);">
+  <div class="container">
+    <div class="row justify-content-center">
+      <div class="col-lg-10">
+        <a href="{{ url_for('main.course_medical_school') }}" class="text-muted small d-inline-block mb-3">
+          <i class="bi bi-arrow-left mr-1"></i> Back to course
+        </a>
+        <p class="text-muted small mb-1">Module {{ module_num }}: {{ module_title }}</p>
+        <h1 class="h3 mb-4" style="color: var(--dark-color);">{{ lesson_title }}</h1>
+
+        <div class="border rounded-3 overflow-hidden bg-dark mb-4" style="aspect-ratio: 16/9;">
+          <div class="w-100 h-100 d-flex align-items-center justify-content-center text-white">
+            <div class="text-center p-4">
+              <i class="bi bi-play-circle" style="font-size: 4rem; opacity: 0.8;"></i>
+              <p class="mt-2 mb-0 small">Video coming soon</p>
+              <p class="small opacity-75">Lesson {{ module_num }}.{{ lesson_num }} — {{ lesson_title }}</p>
+            </div>
+          </div>
+        </div>
+
+        <p class="text-muted small">Content for this lesson is in production. You have full access to the course.</p>
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}

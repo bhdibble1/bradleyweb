@@ -1,6 +1,8 @@
-from flask import Blueprint, render_template, redirect, url_for, request, flash, session, jsonify, request
+from functools import wraps
+from flask import Blueprint, render_template, redirect, url_for, request, flash, session, jsonify, current_app
+from sqlalchemy import func, or_
 from SS.models import db, User, bcrypt, Product, Order, OrderItem, Membership
-from SS.forms import RegistrationForm, LoginForm, QuitNicotineGuideForm, PremiumCSRFForm
+from SS.forms import RegistrationForm, LoginForm, ForgotPasswordForm, ResetPasswordForm, QuitNicotineGuideForm, PremiumCSRFForm
 from SS.emailer import send_email
 from flask_login import login_user, current_user, logout_user, login_required
 from flask import session
@@ -12,8 +14,33 @@ import traceback
 from datetime import datetime
 
 
-
 main = Blueprint('main', __name__)
+
+
+def membership_required(*allowed_tiers):
+    """
+    Decorator: require an active membership. If allowed_tiers is given, the membership's tier must be one of them.
+    Use after @login_required.
+
+    Examples:
+        @membership_required()                    # any active membership
+        @membership_required("gold", "early_bird_gold")  # only gold or early_bird_gold
+    """
+    def decorator(f):
+        @wraps(f)
+        def wrapped(*args, **kwargs):
+            if not current_user.is_authenticated:
+                return redirect(url_for("main.login", next=request.url))
+            membership = _get_user_membership(current_user.id)
+            if not membership:
+                flash("This page is for premium members. Subscribe to get access.", "warning")
+                return redirect(url_for("main.premium"))
+            if allowed_tiers and membership.tier not in allowed_tiers:
+                flash("This page requires a different membership tier. Upgrade or change plan to get access.", "warning")
+                return redirect(url_for("main.premium"))
+            return f(*args, **kwargs)
+        return wrapped
+    return decorator
 
 PROJECT_SLUGS = {'music': 'Music', 'premed': 'Premed', 'charity': 'Charity', 'vidiography': 'Vidiography', 'chemistry': 'Chemistry'}
 
@@ -135,6 +162,73 @@ def _get_user_membership(user_id):
     return m
 
 
+def _get_user_latest_membership(user_id):
+    """Return the user's most recent membership (any status), for showing ended/canceled state."""
+    if not user_id:
+        return None
+    return (
+        Membership.query.filter_by(user_id=user_id)
+        .order_by(Membership.created_at.desc())
+        .first()
+    )
+
+
+def _user_has_medical_school_access(user_id):
+    """True if user has Gold/Early Bird Gold membership OR has purchased the medical school course product ($97)."""
+    if not user_id:
+        return False
+    membership = _get_user_membership(user_id)
+    if membership and membership.tier in ("gold", "early_bird_gold"):
+        return True
+    pid = _medical_school_course_product_id()
+    if not pid:
+        return False
+    has_purchase = (
+        OrderItem.query.join(Order)
+        .filter(Order.user_id == user_id, OrderItem.product_id == pid)
+        .first()
+        is not None
+    )
+    return has_purchase
+
+
+# Structure for medical school course: module number (1-based) -> (module_title, [lesson_titles])
+# (module_title, module_description, [lesson_title, ...])
+MEDICAL_SCHOOL_MODULES = [
+    ("Building Your Foundation", "GPA, rigor, and the first two years. Setting yourself up without burning out.", ["Choosing your major and course load", "Study systems that scale", "When to start research and volunteering"]),
+    ("MCAT Mastery", "Content review, practice exams, and test-day strategy. When to take it and how to improve.", ["Content review schedule", "Full-length strategy and review", "Test day and score release"]),
+    ("Crafting Your Narrative", "Personal statement, activities, and the story that ties your application together.", ["Finding your theme", "Drafting the personal statement", "Activities and work/activities section"]),
+    ("Letters & Relationships", "Choosing letter writers, when to ask, and how to make it easy for them to say yes.", ["Who to ask and how many", "Requesting the letter and providing materials", "Committee letters and packets"]),
+    ("School List Strategy", "Reach, target, and safety. Building a list that fits your stats and your life.", ["Using MSAR and school missions", "How many schools to apply to", "Geography, cost, and fit"]),
+    ("Secondaries That Stand Out", "Templates, themes, and how to turn the same experiences into school-specific answers.", ["Common secondary prompts", "Reusing and tailoring answers", "Timeline and staying sane"]),
+    ("Interview Prep", "MMI, traditional, and virtual. Practice questions and how to show up as yourself.", ["MMI format and practice", "Traditional interview questions", "Virtual interview setup and mindset"]),
+    ("The Waitlist & Beyond", "Letters of intent, updates, and staying sane while you wait. Planning for gap years.", ["Letters of intent and interest", "Update letters and when to send", "Gap year planning and reapplication"]),
+]
+
+
+def _tier_from_stripe_subscription(sub):
+    """Infer tier from subscription's first item price/product. Returns None if unknown."""
+    items = (sub or {}).get("items") or {}
+    data = items.get("data") or []
+    if not data:
+        return None
+    price = (data[0] or {}).get("price") or {}
+    product = price.get("product")
+    if isinstance(product, str) and product.startswith("prod_"):
+        product_id = product
+    elif isinstance(product, dict):
+        product_id = product.get("id")
+    else:
+        product_id = getattr(product, "id", None)
+    if not product_id:
+        return None
+    # PREMIUM_PRODUCT_KEYS: tier -> env key; env value is product_id
+    for tier, env_key in PREMIUM_PRODUCT_KEYS.items():
+        if os.environ.get(env_key, "").strip() == product_id:
+            return tier
+    return None
+
+
 TIER_LABELS = {"early_bird_gold": "Early Bird Gold", "regular": "Regular Member", "gold": "Gold"}
 
 
@@ -192,24 +286,28 @@ def _sync_membership_from_checkout_session(session_id, user_id):
 
 
 @main.route("/premium", methods=["GET"])
-@login_required
 def premium():
-    if request.args.get("success") == "1":
-        flash("Thanks for subscribing! You can manage your subscription below.", "success")
-        session_id = request.args.get("session_id")
-        if session_id:
-            _sync_membership_from_checkout_session(session_id, current_user.id)
-    membership = _get_user_membership(current_user.id)
+    membership = None
+    latest_membership = None
+    if current_user.is_authenticated:
+        if request.args.get("success") == "1":
+            flash("Thanks for subscribing! You can manage your subscription below.", "success")
+            session_id = request.args.get("session_id")
+            if session_id:
+                _sync_membership_from_checkout_session(session_id, current_user.id)
+        membership = _get_user_membership(current_user.id)
+        latest_membership = _get_user_latest_membership(current_user.id)  # for "ended" message when no active
     product_id_early = os.environ.get(PREMIUM_PRODUCT_KEYS["early_bird_gold"], "").strip()
     price_id_early = _get_price_id_from_product(product_id_early) if product_id_early else None
     count = _count_active_subscriptions(price_id_early) if price_id_early else None
     early_bird_spots_left = (EARLY_BIRD_CAPACITY - count) if count is not None else None
-    regular_price = os.environ.get("PREMIUM_REGULAR_MEMBER_PRICE", "5")
+    regular_price = os.environ.get("PREMIUM_REGULAR_MEMBER_PRICE", "20")
     form = PremiumCSRFForm()
     return render_template(
         "premium.html",
         form=form,
         membership=membership,
+        latest_membership=latest_membership,
         tier_labels=TIER_LABELS,
         early_bird_spots_left=early_bird_spots_left,
         regular_member_price=regular_price,
@@ -410,7 +508,8 @@ def orders():
 @main.route("/products")
 def products():
     try:
-        products = Product.query.all()
+        # Exclude course products from shop (courses are on their own page)
+        products = Product.query.filter(or_(Product.category.is_(None), Product.category != "Course")).all()
         return render_template('products.html', products=products)
     except Exception as e:
         traceback.print_exc()
@@ -518,6 +617,65 @@ def logout():
     logout_user()
     return redirect(url_for('main.home'))
 
+
+def _password_reset_serializer():
+    from itsdangerous import URLSafeTimedSerializer
+    secret = current_app.config.get("SECRET_KEY") or os.environ.get("SECRET_KEY") or "change-me"
+    return URLSafeTimedSerializer(secret, salt="password-reset")
+
+
+@main.route("/forgot-password", methods=["GET", "POST"])
+def forgot_password():
+    if current_user.is_authenticated:
+        return redirect(url_for("main.home"))
+    form = ForgotPasswordForm()
+    if form.validate_on_submit():
+        user = User.query.filter(func.lower(User.email) == form.email.data.strip().lower()).first()
+        if user:
+            ser = _password_reset_serializer()
+            token = ser.dumps({"user_id": user.id}, salt="password-reset")
+            reset_url = url_for("main.reset_password", token=token, _external=True)
+            html = f"<p>You requested a password reset. Click the link below to set a new password (valid for 1 hour):</p><p><a href=\"{reset_url}\">{reset_url}</a></p><p>If you didn't request this, you can ignore this email.</p>"
+            sent = send_email(to=user.email, subject="Reset your password", html=html)
+            if sent:
+                flash("Check your email for a link to reset your password.", "success")
+            else:
+                flash("We couldn't send the email. Please try again later or contact support.", "danger")
+        else:
+            # Don't reveal whether the email exists
+            flash("If that email is registered, you'll receive a reset link shortly.", "success")
+        return redirect(url_for("main.login"))
+    return render_template("forgot_password.html", title="Forgot password", form=form)
+
+
+@main.route("/reset-password", methods=["GET", "POST"])
+def reset_password():
+    if current_user.is_authenticated:
+        return redirect(url_for("main.home"))
+    token = request.args.get("token") or request.form.get("token")
+    if not token:
+        flash("Invalid or missing reset link.", "danger")
+        return redirect(url_for("main.forgot_password"))
+    from itsdangerous import BadSignature, SignatureExpired
+    ser = _password_reset_serializer()
+    try:
+        payload = ser.loads(token, salt="password-reset", max_age=3600)
+        user_id = payload.get("user_id")
+    except (BadSignature, SignatureExpired):
+        flash("That reset link is invalid or has expired. Please request a new one.", "danger")
+        return redirect(url_for("main.forgot_password"))
+    user = User.query.get(user_id) if user_id else None
+    if not user:
+        flash("Invalid reset link.", "danger")
+        return redirect(url_for("main.forgot_password"))
+    form = ResetPasswordForm()
+    if form.validate_on_submit():
+        user.password = bcrypt.generate_password_hash(form.password.data).decode("utf-8")
+        db.session.commit()
+        flash("Your password has been updated. You can log in now.", "success")
+        return redirect(url_for("main.login"))
+    return render_template("reset_password.html", title="Reset password", form=form, token=token)
+
 @main.route('/create-checkout-session', methods=['POST'])
 def create_checkout_session():
     cart = session.get('cart', {})
@@ -545,7 +703,11 @@ def create_checkout_session():
             'quantity': quantity,
         })
 
-    # Create Stripe checkout session
+    # Create Stripe checkout session (success_url includes session_id so we can create order on redirect without webhook)
+    success_url = url_for('main.payment_success', _external=True)
+    if not success_url.endswith('/'):
+        success_url = success_url.rstrip('/')
+    success_url += '?session_id={CHECKOUT_SESSION_ID}'
     session_data = stripe.checkout.Session.create(
         metadata={
             'user_id': str(user_id) if user_id else '',
@@ -554,7 +716,7 @@ def create_checkout_session():
         payment_method_types=['card'],
         line_items=line_items,
         mode='payment',
-        success_url=url_for('main.payment_success', _external=True),
+        success_url=success_url,
         cancel_url=url_for('main.cart', _external=True),
         shipping_address_collection={'allowed_countries': ['US', 'CA']},
         shipping_options=[{
@@ -688,12 +850,92 @@ def task_send_order_email():
     return ("sent", 200) if ok else ("send failed", 200)
 
 
+def _set_if_attr(obj, name, value):
+    if hasattr(obj, name):
+        setattr(obj, name, value)
+
+
+def _upsert_order_and_reduce_stock(meta, session_id=None, pi_id=None):
+    """Create or update order and reduce inventory from Stripe session metadata. Idempotent by session_id."""
+    raw_cart = (meta or {}).get("cart", "{}")
+    try:
+        cart = json.loads(raw_cart) if isinstance(raw_cart, str) else (raw_cart or {})
+    except Exception:
+        cart = {}
+
+    user_id = (meta or {}).get("user_id")
+    if isinstance(user_id, str) and user_id.isdigit():
+        user_id = int(user_id)
+    else:
+        user_id = None
+
+    order = None
+    try:
+        if session_id and hasattr(Order, "stripe_session_id"):
+            order = Order.query.filter_by(stripe_session_id=session_id).first()
+        if not order and pi_id and hasattr(Order, "payment_intent_id"):
+            order = Order.query.filter_by(payment_intent_id=pi_id).first()
+    except Exception:
+        pass
+
+    if not order:
+        order = Order(order_date=datetime.utcnow(), total=0.0)
+        if user_id and hasattr(order, "user_id"):
+            order.user_id = user_id
+        _set_if_attr(order, "stripe_session_id", session_id)
+        _set_if_attr(order, "payment_intent_id", pi_id)
+        _set_if_attr(order, "status", "paid")
+        _set_if_attr(order, "paid_at", datetime.utcnow())
+        _set_if_attr(order, "inventory_reduced", False)
+        _set_if_attr(order, "confirmation_sent", False)
+        db.session.add(order)
+        db.session.flush()
+
+    existing = {oi.product_id: oi for oi in OrderItem.query.filter_by(order_id=order.id).all()}
+    total = 0.0
+
+    for pid_str, qty in (cart or {}).items():
+        try:
+            pid = int(pid_str)
+            qty = int(qty)
+        except Exception:
+            continue
+        product = Product.query.get(pid)
+        if not product:
+            continue
+        already = existing.get(pid).quantity if pid in existing else 0
+        delta = max(0, qty - already)
+        line_total = float(product.price) * qty
+        total += line_total
+        if pid in existing:
+            item = existing[pid]
+            item.quantity = qty
+            item.subtotal = line_total
+        else:
+            if qty > 0:
+                db.session.add(OrderItem(
+                    order_id=order.id,
+                    product_id=pid,
+                    quantity=qty,
+                    subtotal=line_total
+                ))
+        if delta > 0 and product.quantity is not None:
+            if delta > product.quantity:
+                delta = product.quantity
+            product.quantity -= delta
+
+    order.total = total
+    _set_if_attr(order, "status", "paid")
+    _set_if_attr(order, "inventory_reduced", True)
+    db.session.commit()
+    return order.id
+
+
 @main.route('/stripe-webhook', methods=['POST'])
 def stripe_webhook():
-    import os, json, stripe, traceback, requests
-    from datetime import datetime
+    import os, traceback, requests
     from sqlalchemy.exc import SQLAlchemyError
-    from SS.models import db, Product, Order, OrderItem
+    from SS.models import Membership as M
 
     payload = request.data
     sig_header = request.headers.get('Stripe-Signature')
@@ -707,93 +949,6 @@ def stripe_webhook():
         return "invalid payload", 400
 
     etype = event.get("type")
-
-    def set_if_attr(obj, name, value):
-        if hasattr(obj, name):
-            setattr(obj, name, value)
-
-    def upsert_order_and_reduce_stock(meta, session_id=None, pi_id=None):
-        # cart from metadata (JSON string)
-        raw_cart = (meta or {}).get("cart", "{}")
-        try:
-            cart = json.loads(raw_cart) if isinstance(raw_cart, str) else (raw_cart or {})
-        except Exception:
-            cart = {}
-
-        # optional user_id from metadata
-        user_id = (meta or {}).get("user_id")
-        if isinstance(user_id, str) and user_id.isdigit():
-            user_id = int(user_id)
-        else:
-            user_id = None
-
-        # try to find an existing order (idempotency)
-        order = None
-        try:
-            if session_id and hasattr(Order, "stripe_session_id"):
-                order = Order.query.filter_by(stripe_session_id=session_id).first()
-            if not order and pi_id and hasattr(Order, "payment_intent_id"):
-                order = Order.query.filter_by(payment_intent_id=pi_id).first()
-        except Exception:
-            pass
-
-        if not order:
-            order = Order(order_date=datetime.utcnow(), total=0.0)
-            if user_id and hasattr(order, "user_id"):
-                order.user_id = user_id
-            set_if_attr(order, "stripe_session_id", session_id)
-            set_if_attr(order, "payment_intent_id", pi_id)
-            set_if_attr(order, "status", "paid")
-            set_if_attr(order, "paid_at", datetime.utcnow())
-            set_if_attr(order, "inventory_reduced", False)
-            set_if_attr(order, "confirmation_sent", False)
-            db.session.add(order)
-            db.session.flush()  # ensure order.id
-
-        existing = {oi.product_id: oi for oi in OrderItem.query.filter_by(order_id=order.id).all()}
-        total = 0.0
-
-        for pid_str, qty in (cart or {}).items():
-            try:
-                pid = int(pid_str); qty = int(qty)
-            except Exception:
-                continue
-
-            product = Product.query.get(pid)
-            if not product:
-                continue
-
-            already = existing.get(pid).quantity if pid in existing else 0
-            delta = max(0, qty - already)
-
-            line_total = float(product.price) * qty
-            total += line_total
-
-            if pid in existing:
-                item = existing[pid]
-                item.quantity = qty
-                item.subtotal = line_total
-            else:
-                if qty > 0:
-                    db.session.add(OrderItem(
-                        order_id=order.id,
-                        product_id=pid,
-                        quantity=qty,
-                        subtotal=line_total
-                    ))
-
-            if delta > 0 and product.quantity is not None:
-                if delta > product.quantity:
-                    delta = product.quantity
-                product.quantity -= delta
-
-        order.total = total
-        set_if_attr(order, "status", "paid")
-        set_if_attr(order, "inventory_reduced", True)
-        db.session.commit()
-        return order.id  # return id we just updated/created
-
-    from SS.models import Membership as M
 
     try:
         if etype == "checkout.session.completed":
@@ -833,7 +988,7 @@ def stripe_webhook():
                             db.session.commit()
                 return "ok", 200
             if s.get("payment_status") == "paid":
-                order_id = upsert_order_and_reduce_stock(
+                order_id = _upsert_order_and_reduce_stock(
                     meta=s.get("metadata") or {},
                     session_id=s.get("id"),
                     pi_id=s.get("payment_intent"),
@@ -867,6 +1022,10 @@ def stripe_webhook():
                     m.current_period_end = datetime.utcfromtimestamp(sub["current_period_end"])
                 if sub.get("customer"):
                     m.stripe_customer_id = sub["customer"]
+                tier_from_stripe = _tier_from_stripe_subscription(sub)
+                if tier_from_stripe:
+                    m.tier = tier_from_stripe
+                m.cancel_at_period_end = bool(sub.get("cancel_at_period_end"))
                 db.session.commit()
             return "ok", 200
 
@@ -875,14 +1034,16 @@ def stripe_webhook():
             sub_id = sub.get("id")
             m = M.query.filter_by(stripe_subscription_id=sub_id).first()
             if m:
-                db.session.delete(m)
+                m.status = "canceled"
+                m.canceled_at = datetime.utcnow()
+                m.cancel_at_period_end = False
                 db.session.commit()
             return "ok", 200
 
         if etype == "payment_intent.succeeded":
             # we’ll still reduce inventory here (idempotent) but skip email
             pi = event["data"]["object"]
-            upsert_order_and_reduce_stock(meta=pi.get("metadata") or {}, pi_id=pi.get("id"))
+            _upsert_order_and_reduce_stock(meta=pi.get("metadata") or {}, pi_id=pi.get("id"))
             return "ok", 200
 
     except SQLAlchemyError:
@@ -899,7 +1060,20 @@ def stripe_webhook():
 
 @main.route('/payment-success')
 def payment_success():
-    return render_template('payment_success.html')  # Make sure you have this template
+    # Create order from Stripe session on redirect (works locally without webhook; idempotent with webhook)
+    session_id = request.args.get('session_id')
+    if session_id:
+        try:
+            s = stripe.checkout.Session.retrieve(session_id)
+            if s.get('mode') == 'payment' and s.get('payment_status') == 'paid':
+                _upsert_order_and_reduce_stock(
+                    s.get('metadata') or {},
+                    session_id=s.get('id'),
+                    pi_id=s.get('payment_intent'),
+                )
+        except stripe.error.StripeError:
+            pass
+    return render_template('payment_success.html')
 
 def remove_from_cart(product_id):
     cart = session.get('cart', {})
@@ -928,8 +1102,92 @@ def store_card_search():
 
 @main.route('/courses')
 def courses():
-    """Courses page (personal page)."""
+    """Courses listing page."""
     return render_template('courses.html')
+
+
+@main.route('/free-resources')
+def free_resources():
+    """Free resources listing page (guides, downloads, etc.)."""
+    return render_template('free_resources.html')
+
+
+# Product name must match SS/add_medical_school_course_product.py
+MEDICAL_SCHOOL_COURSE_PRODUCT_NAME = "Getting into Medical School (Course)"
+
+
+def _medical_school_course_product_id():
+    """Return the product id for the $97 course if configured, else None. Uses env var or DB lookup by name."""
+    raw = os.environ.get("MEDICAL_SCHOOL_COURSE_PRODUCT_ID", "").strip()
+    try:
+        pid = int(raw) if raw else None
+    except ValueError:
+        pid = None
+    if pid is not None:
+        return pid
+    # Fallback: product exists in DB but env not set — look up by name
+    p = Product.query.filter_by(product_name=MEDICAL_SCHOOL_COURSE_PRODUCT_NAME).first()
+    return p.id if p else None
+
+
+@main.route('/courses/medical-school')
+def course_medical_school():
+    """Getting into Medical School. Access via Gold/Early Bird Gold or one-time $97 purchase."""
+    can_access = _user_has_medical_school_access(current_user.id) if current_user.is_authenticated else False
+    course_product_id = _medical_school_course_product_id()
+    return render_template(
+        'course_medical_school.html',
+        can_access=can_access,
+        modules_lessons=MEDICAL_SCHOOL_MODULES,
+        course_product_id=course_product_id,
+    )
+
+
+@main.route('/courses/medical-school/buy', methods=['GET', 'POST'])
+def course_medical_school_buy():
+    """Add the $97 course product to cart and redirect to cart. Requires login."""
+    if not current_user.is_authenticated:
+        flash("Log in to purchase the course.", "warning")
+        return redirect(url_for("main.login", next=url_for("main.course_medical_school")))
+    pid = _medical_school_course_product_id()
+    if not pid:
+        flash("Course purchase is not configured.", "warning")
+        return redirect(url_for("main.course_medical_school"))
+    product = Product.query.get(pid)
+    if not product:
+        flash("Course product not found.", "warning")
+        return redirect(url_for("main.course_medical_school"))
+    add_to_cart(product.id, 1)
+    check_free_booster_pack()
+    flash("Course added to cart. Complete checkout to get access.", "success")
+    return redirect(url_for("main.cart"))
+
+
+@main.route('/courses/medical-school/lesson/<int:module_num>/<int:lesson_num>')
+def course_medical_school_lesson(module_num, lesson_num):
+    """Show a single lesson (video + title). Only if user has course access."""
+    if not current_user.is_authenticated:
+        flash("Log in to access course lessons.", "warning")
+        return redirect(url_for("main.login", next=request.url))
+    if not _user_has_medical_school_access(current_user.id):
+        flash("You need Gold membership or the one-time course purchase to view lessons.", "warning")
+        return redirect(url_for("main.course_medical_school"))
+    if module_num < 1 or module_num > len(MEDICAL_SCHOOL_MODULES):
+        return redirect(url_for("main.course_medical_school"))
+    module_title, _description, lesson_titles = MEDICAL_SCHOOL_MODULES[module_num - 1]
+    if lesson_num < 1 or lesson_num > len(lesson_titles):
+        return redirect(url_for("main.course_medical_school"))
+    lesson_title = lesson_titles[lesson_num - 1]
+    return render_template(
+        'course_lesson.html',
+        course_title="Getting into Medical School",
+        module_num=module_num,
+        module_title=module_title,
+        lesson_num=lesson_num,
+        lesson_title=lesson_title,
+        total_modules=len(MEDICAL_SCHOOL_MODULES),
+        lessons_in_module=len(lesson_titles),
+    )
 
 
 @main.route('/cv')

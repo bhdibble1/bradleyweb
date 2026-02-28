@@ -2,7 +2,7 @@
 <html>
 <head>
     <title>{% block title %}Home{% endblock %}</title>
-    <link rel="icon" href="https://res.cloudinary.com/dzt95pn0s/image/upload/v1745552166/favicon_xh6goe.ico" type="image/x-icon">
+    <link rel="icon" href="{{ url_for('static', filename='favicon.png') }}" type="image/png">
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" /> 
 
@@ -50,6 +50,12 @@
         <a class="nav-link {% if request.endpoint=='main.courses' %}active{% endif %}" 
            href="{{ url_for('main.courses') }}">
           Courses
+        </a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link {% if request.endpoint=='main.free_resources' %}active{% endif %}" 
+           href="{{ url_for('main.free_resources') }}">
+          Free resources
         </a>
       </li>
       <li class="nav-item">

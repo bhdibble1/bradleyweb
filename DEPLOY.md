@@ -49,6 +49,7 @@ This app is a Flask app with SQLAlchemy, Stripe, and Flask-Admin. It’s set up 
    | `GUIDE_DOWNLOAD_URL` / `GUIDE_BOOK_IMAGE_URL` | Links/images for guide/book |
    | `PREMIUM_REGULAR_MEMBER_PRICE` | Price for regular member tier |
    | Stripe product IDs | e.g. `STRIPE_PRODUCT_EARLY_BIRD_GOLD`, `STRIPE_PRODUCT_REGULAR_MEMBER`, `STRIPE_PRODUCT_GOLD` (if your code reads them from env) |
+   | `MEDICAL_SCHOOL_COURSE_PRODUCT_ID` | Product id for the $97 one-time course; set after running `python SS/add_medical_school_course_product.py` so purchasers get course access |
 
 4. **Database**
    - In Render: **New → PostgreSQL** and create a database.

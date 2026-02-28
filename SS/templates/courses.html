@@ -3,8 +3,89 @@
 {% block title %}Courses{% endblock %}
 
 {% block content %}
-<div class="container py-5" style="margin-top: 80px;">
-  <h1 class="mb-4">Courses</h1>
-  <p class="lead text-muted">Coming Soon!</p>
-</div>
+<style>
+  .course-badge-gold {
+    display: inline-block;
+    padding: 0.35em 0.65em;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: #1a1a1a;
+    background: linear-gradient(135deg, #d4af37 0%, #f4e4a6 25%, #c9a227 50%, #f4e4a6 75%, #b8860b 100%);
+    background-size: 200% 100%;
+    border: 1px solid rgba(212, 175, 55, 0.6);
+    border-radius: 4px;
+    position: relative;
+    overflow: hidden;
+    transition: box-shadow 0.3s ease;
+  }
+  .course-badge-gold::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 60%;
+    height: 100%;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(255, 255, 255, 0.4),
+      transparent
+    );
+    transition: left 0.6s ease;
+  }
+  .course-badge-gold:hover {
+    box-shadow: 0 0 12px rgba(212, 175, 55, 0.5);
+  }
+  .course-badge-gold:hover::after {
+    left: 100%;
+  }
+  .courses-free-resources-bubble {
+    display: inline-block;
+    padding: 0.5em 1em;
+    margin-top: 0.5rem;
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: #0f0f0f;
+    background: #f0f0f0;
+    border: 1px solid #ddd;
+    border-radius: 999px;
+    text-decoration: none;
+    transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+  }
+  .courses-free-resources-bubble:hover {
+    background: #e8e8e8;
+    border-color: #ccc;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    text-decoration: none;
+    color: #0f0f0f;
+  }
+</style>
+<section class="py-5" style="margin-top: 80px;">
+  <div class="container">
+    <h1 class="mb-2">Courses</h1>
+    <p class="text-muted mb-4">Structured learning paths. Buy Each Course Individually or up</p>
+    <p class="mb-4">
+      <a href="{{ url_for('main.free_resources') }}" class="courses-free-resources-bubble">Free resources — guides and downloads at no cost</a>
+    </p>
+
+    <div class="row g-4">
+      <div class="col-md-6 col-lg-4">
+        <div class="card h-100 shadow-sm border-0 rounded-3 overflow-hidden">
+          <div class="card-body p-4 d-flex flex-column">
+            <span class="course-badge-gold mb-2 align-self-start">Gold Members</span>
+            <h2 class="h5 mb-2">Getting into Medical School</h2>
+            <p class="text-muted small mb-3 flex-grow-1">From pre-med to acceptance: MCAT, applications, secondaries, and interviews.</p>
+            {% if current_user.is_authenticated %}
+              <a href="{{ url_for('main.course_medical_school') }}" class="button align-self-start">View course</a>
+            {% else %}
+              <a href="{{ url_for('main.login', next=url_for('main.course_medical_school')) }}" class="button align-self-start">Log in to access</a>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
 {% endblock %}
