@@ -1,4 +1,11 @@
-# app.py
+# app.py - load .env first so USE_SQLITE/DATABASE_URL apply to "flask db upgrade" too
+from pathlib import Path
+try:
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).resolve().parent / ".env")
+except Exception:
+    pass
+
 import os
 from flask import redirect, url_for, request
 from flask_login import current_user

@@ -10,36 +10,38 @@
         {% for product in products if product.category != 'Promo' %}
             <div class="col-md-4 mb-4">
                 <div class="card h-100 shadow-sm">
-                    <img src="{{ product.product_image }}" 
+                    <img src="{{ product.product_image or '' }}" 
                          class="card-img-top" 
-                         alt="{{ product.product_name }}" 
+                         alt="{{ product.product_name or 'Product' }}" 
                          style="object-fit: cover; height: 220px;">
 
                     <div class="card-body d-flex flex-column justify-content-between text-center">
-                        <h5 class="card-title">{{ product.product_name }}</h5>
+                        <h5 class="card-title">{{ product.product_name or 'Product' }}</h5>
 
                         <p class="card-text mb-3">
-                            <strong>Price:</strong> ${{ "%.2f"|format(product.price) }}
+                            <strong>Price:</strong> ${{ "%.2f"|format(product.price if product.price is not none else 0) }}
                         </p>
 
+                        {% set qty = product.quantity if product.quantity is not none else 0 %}
+                        {% set max_option = min(qty, 10) %}
                         <form method="POST" action="{{ url_for('main.add_to_cart_route') }}" class="d-flex justify-content-center align-items-center gap-3">
-                            <input type="hidden" name="product_id" value="{{ product.id }}">
+                            <input type="hidden" name="product_id" value="{{ product.id if product.id is not none else '' }}">
 
-                            <!-- Dropdown with 'of X' label -->
+                            <!-- Dropdown with 'of X' label (guard against None quantity) -->
                             <div class="d-flex border rounded overflow-hidden" style="height: 38px;">
                                 <select name="quantity" class="form-select border-0" style="width: 60px;">
-                                    {% for i in range(1, min(product.quantity, 10) + 1) %}
+                                    {% for i in range(1, max_option + 1) %}
                                         <option value="{{ i }}">{{ i }}</option>
                                     {% endfor %}
                                 </select>
                                 <div class="d-flex align-items-center px-2 bg-light border-start">
-                                    of {{ product.quantity }}
+                                    of {{ qty }}
                                 </div>
                             </div>
 
-                            <!-- Add to Cart button -->
-                            <button type="button" class="btn ml-2 fw-bold text-white add-to-cart-btn" style="background-color: #3224f0; border: none; border-radius: 10px; padding: 8px 16px;">
-                                Add to Cart
+                            <!-- Add to Cart button (disabled when out of stock) -->
+                            <button type="button" class="btn ml-2 fw-bold text-white add-to-cart-btn" style="background-color: #3224f0; border: none; border-radius: 10px; padding: 8px 16px;" {{ 'disabled' if qty < 1 else '' }}>
+                                {{ 'Out of stock' if qty < 1 else 'Add to Cart' }}
                             </button>
                         </form>
                     </div>

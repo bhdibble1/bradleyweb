@@ -6,6 +6,13 @@ from flask_login import LoginManager
 from flask_migrate import Migrate
 import stripe
 
+# Load .env so USE_SQLITE / DATABASE_URL are set when running "python app.py" (not just "flask run")
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 # Initialize extensions
 db = SQLAlchemy()
 bcrypt = Bcrypt()
@@ -22,10 +29,21 @@ def create_app(config_class=None):
         total_quantity = sum(cart.values())
         return dict(cart_total=total_quantity)
 
+    # Database: use SQLite for local/testing when USE_SQLITE=1, or when DATABASE_URL is unset.
+    # On deploy: set DATABASE_URL (e.g. Supabase) and do NOT set USE_SQLITE.
+    use_sqlite = os.environ.get('USE_SQLITE', '').strip().lower() in ('1', 'true', 'yes')
+    database_url = (os.environ.get('DATABASE_URL') or '').strip()
+    if use_sqlite or not database_url:
+        os.makedirs(app.instance_path, exist_ok=True)
+        sqlite_path = os.path.join(app.instance_path, 'app.sqlite')
+        database_uri = 'sqlite:///' + sqlite_path
+    else:
+        database_uri = database_url
+
     # Load base configuration
     app.config.from_mapping(
-        SECRET_KEY=os.environ.get('SECRET_KEY'),
-        SQLALCHEMY_DATABASE_URI=os.environ.get('DATABASE_URL'),  # ✅ Use Supabase PostgreSQL
+        SECRET_KEY=os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production'),
+        SQLALCHEMY_DATABASE_URI=database_uri,
         SQLALCHEMY_TRACK_MODIFICATIONS=False,
         STRIPE_SECRET_KEY=os.environ.get('STRIPE_SECRET_KEY'),
         STRIPE_PUBLIC_KEY=os.environ.get('STRIPE_PUBLIC_KEY'),

@@ -1,4 +1,5 @@
 Flask>=2.3,<4
+python-dotenv>=1.0
 gunicorn>=21
 Flask-SQLAlchemy
 Flask-Bcrypt

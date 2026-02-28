@@ -1,6 +1,6 @@
 from flask import Blueprint, render_template, redirect, url_for, request, flash, session, jsonify, request
 from SS.models import db, User, bcrypt, Product, Order, OrderItem
-from SS.forms import RegistrationForm, LoginForm
+from SS.forms import RegistrationForm, LoginForm, QuitNicotineGuideForm, PremiumCSRFForm
 from SS.emailer import send_email
 from flask_login import login_user, current_user, logout_user, login_required
 from flask import session
@@ -8,16 +8,120 @@ import stripe
 import json
 import os
 import requests
+import traceback
 from datetime import datetime
 
 
 
 main = Blueprint('main', __name__)
 
-@main.route("/about")
-def about():
-    # Face-aware, square crop; tweak sizes as you like
-    return render_template("about.html")
+PROJECT_SLUGS = {'music': 'Music', 'premed': 'Premed', 'charity': 'Charity', 'vidiography': 'Vidiography', 'chemistry': 'Chemistry'}
+
+
+@main.route("/projects/<slug>")
+def project_page(slug):
+    if slug not in PROJECT_SLUGS:
+        return redirect(url_for('main.home'))
+    return render_template("project_page.html", project_name=PROJECT_SLUGS[slug], slug=slug)
+
+
+@main.route("/free-quit-nicotine-guide", methods=["GET", "POST"])
+def quit_nicotine_guide():
+    form = QuitNicotineGuideForm()
+    if form.validate_on_submit():
+        email = form.email.data.strip()
+        download_url = os.environ.get("GUIDE_DOWNLOAD_URL", "").strip()
+        from_name = os.environ.get("FROM_NAME", "5 Star Mint")
+        if download_url:
+            html = f"""
+            <p>Thanks for signing up. Here's your free 30-day guide to quit nicotine.</p>
+            <p><a href="{download_url}" style="display:inline-block;background:#141414;color:#fff;padding:12px 24px;text-decoration:none;border-radius:8px;">Download the guide</a></p>
+            <p>If the button doesn't work, copy this link: {download_url}</p>
+            """
+        else:
+            html = "<p>You're on the list. We'll send your free 30-day quit nicotine guide to this email shortly.</p>"
+        sent = send_email(
+            to=email,
+            subject="Your free 30-day guide to quit nicotine",
+            html=html,
+            from_name=from_name,
+        )
+        if sent:
+            flash("Check your email for the download link.", "success")
+        else:
+            flash("We received your email. You'll get the guide soon.", "success")
+        return redirect(url_for("main.quit_nicotine_guide"))
+    book_image_url = os.environ.get("GUIDE_BOOK_IMAGE_URL", "").strip()
+    return render_template("quit_nicotine_guide.html", form=form, book_image_url=book_image_url or None)
+
+
+EARLY_BIRD_CAPACITY = 10
+
+
+def _count_active_subscriptions(price_id):
+    """Return number of active subscriptions for the given Stripe price ID."""
+    if not price_id:
+        return None
+    try:
+        subs = stripe.Subscription.list(price=price_id, status="active", limit=100)
+        return len(subs.get("data", []))
+    except Exception:
+        return None
+
+
+@main.route("/premium", methods=["GET"])
+def premium():
+    if request.args.get("success") == "1":
+        flash("Thanks for subscribing! Check your email for next steps.", "success")
+    price_early = os.environ.get("STRIPE_PRICE_EARLY_BIRD_GOLD", "").strip()
+    count = _count_active_subscriptions(price_early) if price_early else None
+    early_bird_spots_left = (EARLY_BIRD_CAPACITY - count) if count is not None else None
+    regular_price = os.environ.get("PREMIUM_REGULAR_MEMBER_PRICE", "5")
+    form = PremiumCSRFForm()
+    return render_template(
+        "premium.html",
+        form=form,
+        early_bird_spots_left=early_bird_spots_left,
+        regular_member_price=regular_price,
+    )
+
+
+VALID_TIERS = ("early_bird_gold", "regular", "gold")
+
+
+@main.route("/create-membership-checkout-session", methods=["POST"])
+def create_membership_checkout_session():
+    tier = (request.form.get("tier") or "").strip()
+    if tier not in VALID_TIERS:
+        flash("Invalid membership tier.", "danger")
+        return redirect(url_for("main.premium"))
+    price_ids = {
+        "early_bird_gold": os.environ.get("STRIPE_PRICE_EARLY_BIRD_GOLD", "").strip(),
+        "regular": os.environ.get("STRIPE_PRICE_REGULAR_MEMBER", "").strip(),
+        "gold": os.environ.get("STRIPE_PRICE_GOLD", "").strip(),
+    }
+    price_id = price_ids.get(tier)
+    if not price_id:
+        flash("This membership is not set up yet. Add your Stripe price IDs to the server (.env) and try again.", "warning")
+        return redirect(url_for("main.premium"))
+    if tier == "early_bird_gold":
+        count = _count_active_subscriptions(price_id)
+        if count is not None and count >= EARLY_BIRD_CAPACITY:
+            flash("Early Bird Gold is sold out (10 spots filled).", "warning")
+            return redirect(url_for("main.premium"))
+    try:
+        checkout_session = stripe.checkout.Session.create(
+            mode="subscription",
+            payment_method_types=["card"],
+            line_items=[{"price": price_id, "quantity": 1}],
+            success_url=url_for("main.premium", _external=True) + "?success=1",
+            cancel_url=url_for("main.premium", _external=True),
+        )
+        return redirect(checkout_session.url, code=303)
+    except stripe.error.StripeError as e:
+        flash(f"Could not start checkout: {str(e)}", "danger")
+        return redirect(url_for("main.premium"))
+
 
 # utils/cart.py or just at the top of routes.py if small project
 @main.route('/cart/json')
@@ -128,6 +232,12 @@ def remove_promo_if_no_sealed(cart):
 @main.route('/')
 @main.route('/home')
 def home():
+    return render_template('channel_home.html')
+
+
+@main.route('/shop')
+def shop():
+    """Store landing page (products, promos)."""
     return render_template('home.html')
 
 @main.route('/orders')
@@ -139,16 +249,20 @@ def orders():
 
 @main.route("/products")
 def products():
-    category = request.args.get('category')  # Get 'category' from query string (e.g., /products?category=electronics)
+    try:
+        category = request.args.get('category')  # Get 'category' from query string (e.g., /products?category=electronics)
 
-    if category:
-        # Filter by category if specified
-        products = Product.query.filter(Product.category == category).all()
-    else:
-        # Otherwise, show all products
-        products = Product.query.all()
+        if category:
+            # Filter by category if specified
+            products = Product.query.filter(Product.category == category).all()
+        else:
+            # Otherwise, show all products
+            products = Product.query.all()
 
-    return render_template('products.html', products=products)
+        return render_template('products.html', products=products)
+    except Exception as e:
+        traceback.print_exc()
+        raise
 
 
 
@@ -221,7 +335,7 @@ def login():
 @main.route("/register", methods=['GET', 'POST'])
 def register():
     if current_user.is_authenticated:
-        return redirect(url_for('home'))
+        return redirect(url_for('main.home'))
 
     form = RegistrationForm()
 

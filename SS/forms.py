@@ -15,6 +15,15 @@ class LoginForm(FlaskForm):
     password = PasswordField('Password', validators=[DataRequired()])
     submit = SubmitField('Login')
 
+class PremiumCSRFForm(FlaskForm):
+    """Minimal form for CSRF token on premium page forms."""
+    pass
+
+
+class QuitNicotineGuideForm(FlaskForm):
+    email = StringField('Email', validators=[DataRequired(), Email()])
+    submit = SubmitField('Get the free guide')
+
 class ProductForm(FlaskForm):
     product_name = StringField(
         'Product Name',

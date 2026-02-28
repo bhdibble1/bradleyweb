@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>5 Star Mint</title>
+    <title>{% block title %}Home{% endblock %}</title>
     <link rel="icon" href="https://res.cloudinary.com/dzt95pn0s/image/upload/v1745552166/favicon_xh6goe.ico" type="image/x-icon">
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" /> 
@@ -26,9 +26,7 @@
 <body>
 
 <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
-  <a class="navbar-brand padding-l" href="{{ url_for('main.home') }}">
-    5 Star Mint
-  </a>
+  <a class="navbar-brand padding-l" href="{{ url_for('main.home') }}"></a>
   <button class="navbar-toggler" type="button" data-toggle="collapse" 
           data-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" 
           aria-expanded="false" aria-label="Toggle navigation">
@@ -44,9 +42,15 @@
         </a>
       </li>
       <li class="nav-item">
-        <a class="nav-link {% if request.endpoint=='main.about' %}active{% endif %}" 
-          href="{{ url_for('main.about') }}">
-        About
+        <a class="nav-link {% if request.endpoint=='main.shop' %}active{% endif %}" 
+           href="{{ url_for('main.shop') }}">
+          Shop
+        </a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link {% if request.endpoint=='main.premium' %}active{% endif %}" 
+           href="{{ url_for('main.premium') }}">
+          Premium
         </a>
       </li>
       {% if current_user.is_authenticated %}
@@ -59,15 +63,17 @@
       {% endif %}
 
       <li class="nav-item dropdown">
-        <a class="nav-link dropdown-toggle {% if request.endpoint in ['main.products','main.store'] %}active{% endif %}" 
-           href="#" id="navbarDropdown" role="button" data-toggle="dropdown" 
+        <a class="nav-link dropdown-toggle {% if request.endpoint=='main.project_page' %}active{% endif %}" 
+           href="#" id="navbarProjectsDropdown" role="button" data-toggle="dropdown" 
            aria-haspopup="true" aria-expanded="false">
-          Products
+          Projects
         </a>
-        <div class="dropdown-menu" aria-labelledby="navbarDropdown">
-          <a class="dropdown-item" href="{{ url_for('main.products', category='Sealed') }}">Sealed Products</a>
-          <a class="dropdown-item" href="{{ url_for('main.store') }}">Singles</a>
-          <a class="dropdown-item" href="{{ url_for('main.products', category='Comics') }}">Comic Books</a>
+        <div class="dropdown-menu" aria-labelledby="navbarProjectsDropdown">
+          <a class="dropdown-item" href="{{ url_for('main.project_page', slug='music') }}">Music</a>
+          <a class="dropdown-item" href="{{ url_for('main.project_page', slug='premed') }}">Premed</a>
+          <a class="dropdown-item" href="{{ url_for('main.project_page', slug='charity') }}">Charity</a>
+          <a class="dropdown-item" href="{{ url_for('main.project_page', slug='vidiography') }}">Vidiography</a>
+          <a class="dropdown-item" href="{{ url_for('main.project_page', slug='chemistry') }}">Chemistry</a>
         </div>
       </li>
     </ul>

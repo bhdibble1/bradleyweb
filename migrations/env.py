@@ -1,5 +1,14 @@
 import logging
 from logging.config import fileConfig
+from pathlib import Path
+
+# Load .env from project root so USE_SQLITE=1 is applied before Flask app (and DB URL) is used
+try:
+    from dotenv import load_dotenv
+    project_root = Path(__file__).resolve().parent.parent
+    load_dotenv(project_root / ".env")
+except Exception:
+    pass
 
 from flask import current_app
 
