@@ -83,4 +83,11 @@ def create_app(config_class=None):
     from .routes import main
     app.register_blueprint(main)
 
+    # One-command CLI: flask add-book-product (no pasting in shell)
+    @app.cli.command('add-book-product')
+    def add_book_product_cmd():
+        """Add the book preorder product to the store. Run: flask add-book-product"""
+        from .add_book_product import add_book_product
+        add_book_product()
+
     return app

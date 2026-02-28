@@ -29,6 +29,7 @@ class Product(db.Model):
     featured = db.Column(db.Boolean, default=False, nullable=False)
     price = db.Column(db.Float, nullable=False, default=0.00)
     category = db.Column(db.String, nullable=True, default='Sealed')
+    printful_id = db.Column(db.String(32), nullable=True, unique=True)  # Printful catalog product id for sync
 
     def __repr__(self):
         return f"Product('{self.product_name}', '{self.product_image}', '{self.quantity}', '{self.price}')"

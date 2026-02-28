@@ -1,1 +1,1 @@
-web: gunicorn "SS.app:create_app()" 
+web: gunicorn "app:app" 

@@ -218,7 +218,7 @@ img {
 /* ===== CHANNEL HOMEPAGE ===== */
 .channel-hero {
   margin-top: var(--header-height);
-  padding: var(--section-padding) 0;
+  padding: 1.5rem 0 2rem;
 }
 
 .channel-hero .container {
@@ -233,7 +233,7 @@ img {
   width: 100%;
   aspect-ratio: 3 / 4;
   object-fit: cover;
-  border-radius: var(--radius-lg);
+  border-radius: 0;
   box-shadow: var(--shadow-lg);
 }
 

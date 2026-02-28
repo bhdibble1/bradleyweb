@@ -11,6 +11,11 @@ from flask import redirect, url_for, request
 from flask_login import current_user
 from flask_admin import Admin, AdminIndexView
 from flask_admin.contrib.sqla import ModelView
+try:
+    from flask_admin.theme import Bootstrap4Theme
+    _admin_theme = {"theme": Bootstrap4Theme()}
+except ImportError:
+    _admin_theme = {"template_mode": "bootstrap4"}
 
 from SS import create_app
 from SS.models import db, Product, User, Order, OrderItem
@@ -35,6 +40,9 @@ class SecureModelView(ModelView):
     # Nice defaults; optional
     can_view_details = True
     page_size = 50
+    can_edit = True
+    can_create = True
+    can_delete = True
 
     def is_accessible(self):
         return _is_admin()
@@ -42,15 +50,16 @@ class SecureModelView(ModelView):
     def inaccessible_callback(self, name, **kwargs):
         return redirect(url_for("main.login", next=request.url))
 
-# Create admin with a secured index view
+
+# Create admin with a secured index view (Flask-Admin 2.x uses theme=, 1.x uses template_mode=)
 admin = Admin(
     app,
     name="Admin Panel",
-    template_mode="bootstrap4",
     index_view=SecureAdminIndexView(url="/admin", name="Dashboard"),
+    **_admin_theme,
 )
 
-# Secure all model views
+# Secure all model views (no custom form_columns for Product to avoid WTForms flags bug)
 admin.add_view(SecureModelView(User, db.session))
 admin.add_view(SecureModelView(Product, db.session))
 admin.add_view(SecureModelView(Order, db.session))
