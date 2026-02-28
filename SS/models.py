@@ -8,6 +8,8 @@ class User(db.Model, UserMixin):
     
     # One-to-many relationship with Order
     orders = db.relationship('Order', backref='user', lazy=True)
+    # Active premium membership (one per user; use latest if multiple)
+    memberships = db.relationship('Membership', backref='user', lazy=True)
 
     def set_password(self, raw_password):
         self.password = bcrypt.generate_password_hash(raw_password).decode('utf-8')
@@ -74,3 +76,19 @@ class OrderItem(db.Model):
 
     def __repr__(self):
         return f"OrderItem('{self.id}', '{self.order_id}', '{self.product_id}', '{self.quantity}', '{self.subtotal}')"
+
+
+class Membership(db.Model):
+    """Premium subscription linked to a user. Updated via Stripe webhooks. user_id is null until linked (guest checkout)."""
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
+    stripe_subscription_id = db.Column(db.String(255), unique=True, nullable=False)
+    stripe_customer_id = db.Column(db.String(255), nullable=True)
+    tier = db.Column(db.String(64), nullable=False)  # early_bird_gold, regular, gold
+    status = db.Column(db.String(32), nullable=False, default='active')  # active, canceled, past_due, unpaid
+    current_period_end = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=db.func.current_timestamp())
+    link_code = db.Column(db.String(64), unique=True, nullable=True)  # one-time code to link guest subscription to account
+
+    def __repr__(self):
+        return f"<Membership {self.tier} user={self.user_id} status={self.status}>"

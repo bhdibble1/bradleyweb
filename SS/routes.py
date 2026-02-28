@@ -1,5 +1,5 @@
 from flask import Blueprint, render_template, redirect, url_for, request, flash, session, jsonify, request
-from SS.models import db, User, bcrypt, Product, Order, OrderItem
+from SS.models import db, User, bcrypt, Product, Order, OrderItem, Membership
 from SS.forms import RegistrationForm, LoginForm, QuitNicotineGuideForm, PremiumCSRFForm
 from SS.emailer import send_email
 from flask_login import login_user, current_user, logout_user, login_required
@@ -57,6 +57,60 @@ def quit_nicotine_guide():
 
 EARLY_BIRD_CAPACITY = 10
 
+# Env keys: Stripe Product IDs (prod_xxx) for each membership tier
+PREMIUM_PRODUCT_KEYS = {
+    "early_bird_gold": "STRIPE_PRODUCT_EARLY_BIRD_GOLD",
+    "regular": "STRIPE_PRODUCT_REGULAR_MEMBER",
+    "gold": "STRIPE_PRODUCT_GOLD",
+}
+
+
+def _get_price_id_from_product(product_id):
+    """Get the price ID to use for subscriptions from a Stripe Product ID. Uses default_price or first recurring price."""
+    if not product_id:
+        return None
+
+    def _id_from_price(p):
+        """Extract price id from Stripe Price object or dict."""
+        if p is None:
+            return None
+        if isinstance(p, str) and p.startswith("price_"):
+            return p
+        return getattr(p, "id", None) or (p.get("id") if hasattr(p, "get") else None)
+
+    def _has_recurring(p):
+        """True if price has recurring (for subscriptions)."""
+        if p is None:
+            return False
+        rec = getattr(p, "recurring", None) or (p.get("recurring") if hasattr(p, "get") else None)
+        return bool(rec)
+
+    try:
+        # Retrieve without expand first: default_price is often returned as a string id
+        product = stripe.Product.retrieve(product_id)
+        default = product.get("default_price")
+        price_id = _id_from_price(default)
+        if price_id:
+            return price_id
+
+        # Optional: try with expand in case default_price was an object reference
+        product = stripe.Product.retrieve(product_id, expand=["default_price"])
+        default = product.get("default_price")
+        price_id = _id_from_price(default)
+        if price_id:
+            return price_id
+
+        # No default_price set on product: use first recurring price from product's prices
+        prices = stripe.Price.list(product=product_id, active=True, limit=10)
+        for p in prices.get("data", []):
+            if _has_recurring(p):
+                pid = _id_from_price(p)
+                if pid:
+                    return pid
+        return None
+    except stripe.error.StripeError:
+        return None
+
 
 def _count_active_subscriptions(price_id):
     """Return number of active subscriptions for the given Stripe price ID."""
@@ -69,18 +123,94 @@ def _count_active_subscriptions(price_id):
         return None
 
 
+def _get_user_membership(user_id):
+    """Return the user's active membership if any (most recent by created_at)."""
+    if not user_id:
+        return None
+    m = (
+        Membership.query.filter_by(user_id=user_id, status="active")
+        .order_by(Membership.created_at.desc())
+        .first()
+    )
+    return m
+
+
+TIER_LABELS = {"early_bird_gold": "Early Bird Gold", "regular": "Regular Member", "gold": "Gold"}
+
+
+def _sync_membership_from_checkout_session(session_id, user_id):
+    """After payment redirect: create/update Membership from Stripe Checkout Session so the user sees 'Manage subscription' without waiting for the webhook."""
+    if not session_id or not user_id:
+        return
+    try:
+        s = stripe.checkout.Session.retrieve(session_id, expand=["subscription"])
+        if s.get("mode") != "subscription":
+            return
+        meta = s.get("metadata") or {}
+        if meta.get("user_id") != str(user_id):
+            return
+        sub_id = s.get("subscription")
+        if not sub_id:
+            return
+        sub = sub_id if isinstance(sub_id, dict) else stripe.Subscription.retrieve(sub_id)
+        sub_id = sub.get("id") if isinstance(sub, dict) else getattr(sub, "id", sub_id)
+        cust_id = s.get("customer")
+        tier = meta.get("tier") or "regular"
+        period_end = None
+        if sub.get("current_period_end"):
+            period_end = datetime.utcfromtimestamp(sub["current_period_end"])
+        elif hasattr(sub, "current_period_end") and sub.current_period_end:
+            period_end = datetime.utcfromtimestamp(sub.current_period_end)
+        existing = Membership.query.filter_by(stripe_subscription_id=sub_id).first()
+        if existing:
+            if existing.user_id is None:
+                existing.user_id = user_id
+                existing.link_code = None
+                db.session.commit()
+            return
+        cancel_old_id = meta.get("cancel_subscription_id")
+        if cancel_old_id:
+            try:
+                stripe.Subscription.delete(cancel_old_id)
+            except stripe.error.StripeError:
+                pass
+        for old in Membership.query.filter_by(user_id=user_id, status="active").all():
+            db.session.delete(old)
+        db.session.add(Membership(
+            user_id=user_id,
+            stripe_subscription_id=sub_id,
+            stripe_customer_id=cust_id,
+            tier=tier,
+            status="active",
+            current_period_end=period_end,
+        ))
+        db.session.commit()
+    except stripe.error.StripeError:
+        pass
+    except Exception:
+        pass
+
+
 @main.route("/premium", methods=["GET"])
+@login_required
 def premium():
     if request.args.get("success") == "1":
-        flash("Thanks for subscribing! Check your email for next steps.", "success")
-    price_early = os.environ.get("STRIPE_PRICE_EARLY_BIRD_GOLD", "").strip()
-    count = _count_active_subscriptions(price_early) if price_early else None
+        flash("Thanks for subscribing! You can manage your subscription below.", "success")
+        session_id = request.args.get("session_id")
+        if session_id:
+            _sync_membership_from_checkout_session(session_id, current_user.id)
+    membership = _get_user_membership(current_user.id)
+    product_id_early = os.environ.get(PREMIUM_PRODUCT_KEYS["early_bird_gold"], "").strip()
+    price_id_early = _get_price_id_from_product(product_id_early) if product_id_early else None
+    count = _count_active_subscriptions(price_id_early) if price_id_early else None
     early_bird_spots_left = (EARLY_BIRD_CAPACITY - count) if count is not None else None
     regular_price = os.environ.get("PREMIUM_REGULAR_MEMBER_PRICE", "5")
     form = PremiumCSRFForm()
     return render_template(
         "premium.html",
         form=form,
+        membership=membership,
+        tier_labels=TIER_LABELS,
         early_bird_spots_left=early_bird_spots_left,
         regular_member_price=regular_price,
     )
@@ -90,36 +220,66 @@ VALID_TIERS = ("early_bird_gold", "regular", "gold")
 
 
 @main.route("/create-membership-checkout-session", methods=["POST"])
+@login_required
 def create_membership_checkout_session():
     tier = (request.form.get("tier") or "").strip()
     if tier not in VALID_TIERS:
         flash("Invalid membership tier.", "danger")
         return redirect(url_for("main.premium"))
-    price_ids = {
-        "early_bird_gold": os.environ.get("STRIPE_PRICE_EARLY_BIRD_GOLD", "").strip(),
-        "regular": os.environ.get("STRIPE_PRICE_REGULAR_MEMBER", "").strip(),
-        "gold": os.environ.get("STRIPE_PRICE_GOLD", "").strip(),
-    }
-    price_id = price_ids.get(tier)
+    product_id = os.environ.get(PREMIUM_PRODUCT_KEYS.get(tier, ""), "").strip()
+    if not product_id:
+        flash("This membership is not set up yet. Add your Stripe product IDs to the server (.env) and try again.", "warning")
+        return redirect(url_for("main.premium"))
+    price_id = _get_price_id_from_product(product_id)
     if not price_id:
-        flash("This membership is not set up yet. Add your Stripe price IDs to the server (.env) and try again.", "warning")
+        flash("Could not get a subscription price for this product. Check the product in Stripe has a recurring price.", "warning")
         return redirect(url_for("main.premium"))
     if tier == "early_bird_gold":
         count = _count_active_subscriptions(price_id)
         if count is not None and count >= EARLY_BIRD_CAPACITY:
             flash("Early Bird Gold is sold out (10 spots filled).", "warning")
             return redirect(url_for("main.premium"))
+    metadata = {"tier": tier, "user_id": str(current_user.id)}
+    existing = _get_user_membership(current_user.id)
+    if existing:
+        metadata["cancel_subscription_id"] = existing.stripe_subscription_id
     try:
+        success_url = url_for("main.premium", _external=True)
+        if not success_url.endswith("/"):
+            success_url = success_url.rstrip("/")
+        success_url += "?session_id={CHECKOUT_SESSION_ID}&success=1"
         checkout_session = stripe.checkout.Session.create(
             mode="subscription",
             payment_method_types=["card"],
             line_items=[{"price": price_id, "quantity": 1}],
-            success_url=url_for("main.premium", _external=True) + "?success=1",
+            success_url=success_url,
             cancel_url=url_for("main.premium", _external=True),
+            metadata=metadata,
+            client_reference_id=str(current_user.id),
+            customer_email=current_user.email or None,
         )
         return redirect(checkout_session.url, code=303)
     except stripe.error.StripeError as e:
         flash(f"Could not start checkout: {str(e)}", "danger")
+        return redirect(url_for("main.premium"))
+
+
+@main.route("/premium/portal", methods=["GET", "POST"])
+@login_required
+def premium_portal():
+    """Redirect to Stripe Customer Billing Portal to manage/cancel subscription."""
+    membership = _get_user_membership(current_user.id)
+    if not membership or not membership.stripe_customer_id:
+        flash("No active subscription found.", "warning")
+        return redirect(url_for("main.premium"))
+    try:
+        portal_session = stripe.billing_portal.Session.create(
+            customer=membership.stripe_customer_id,
+            return_url=url_for("main.premium", _external=True),
+        )
+        return redirect(portal_session.url, code=303)
+    except stripe.error.StripeError as e:
+        flash(f"Could not open billing portal: {str(e)}", "danger")
         return redirect(url_for("main.premium"))
 
 
@@ -237,8 +397,8 @@ def home():
 
 @main.route('/shop')
 def shop():
-    """Store landing page (products, promos)."""
-    return render_template('home.html')
+    """Redirect to products (shop tab goes directly to products)."""
+    return redirect(url_for('main.products'))
 
 @main.route('/orders')
 @login_required  # Ensure the user is logged in
@@ -250,15 +410,7 @@ def orders():
 @main.route("/products")
 def products():
     try:
-        category = request.args.get('category')  # Get 'category' from query string (e.g., /products?category=electronics)
-
-        if category:
-            # Filter by category if specified
-            products = Product.query.filter(Product.category == category).all()
-        else:
-            # Otherwise, show all products
-            products = Product.query.all()
-
+        products = Product.query.all()
         return render_template('products.html', products=products)
     except Exception as e:
         traceback.print_exc()
@@ -286,7 +438,7 @@ def cart():
 
     return render_template('cart.html', cart_items=cart_items, total=total)
 
-@main.route('/account')
+@main.route('/account', methods=['GET'])
 @login_required
 def account():
     return render_template('account.html')
@@ -641,16 +793,51 @@ def stripe_webhook():
         db.session.commit()
         return order.id  # return id we just updated/created
 
+    from SS.models import Membership as M
+
     try:
         if etype == "checkout.session.completed":
             s = event["data"]["object"]
+            mode = s.get("mode")
+            if mode == "subscription":
+                sub_id = s.get("subscription")
+                cust_id = s.get("customer")
+                meta = s.get("metadata") or {}
+                user_id_str = meta.get("user_id")
+                tier = meta.get("tier") or "regular"
+                if sub_id:
+                    existing = M.query.filter_by(stripe_subscription_id=sub_id).first()
+                    if not existing:
+                        sub = stripe.Subscription.retrieve(sub_id)
+                        period_end = None
+                        if sub.get("current_period_end"):
+                            period_end = datetime.utcfromtimestamp(sub["current_period_end"])
+                        if user_id_str and user_id_str.isdigit():
+                            user_id = int(user_id_str)
+                            cancel_old_id = meta.get("cancel_subscription_id")
+                            if cancel_old_id:
+                                try:
+                                    stripe.Subscription.delete(cancel_old_id)
+                                except stripe.error.StripeError:
+                                    pass
+                            for old in M.query.filter_by(user_id=user_id, status="active").all():
+                                db.session.delete(old)
+                            db.session.add(M(
+                                user_id=user_id,
+                                stripe_subscription_id=sub_id,
+                                stripe_customer_id=cust_id,
+                                tier=tier,
+                                status="active",
+                                current_period_end=period_end,
+                            ))
+                            db.session.commit()
+                return "ok", 200
             if s.get("payment_status") == "paid":
                 order_id = upsert_order_and_reduce_stock(
                     meta=s.get("metadata") or {},
                     session_id=s.get("id"),
                     pi_id=s.get("payment_intent"),
                 )
-                # pass customer email to the task (best available source)
                 customer_email = (s.get("customer_details") or {}).get("email") or s.get("customer_email")
                 task_token = os.environ.get("TASK_TOKEN", "")
                 if order_id and task_token:
@@ -669,6 +856,28 @@ def stripe_webhook():
                         print("⚠️ TASK_TOKEN not set; skipping email task.")
                 return "ok", 200
             return "ignored (not paid)", 200
+
+        if etype == "customer.subscription.updated":
+            sub = event["data"]["object"]
+            sub_id = sub.get("id")
+            m = M.query.filter_by(stripe_subscription_id=sub_id).first()
+            if m:
+                m.status = sub.get("status", m.status)
+                if sub.get("current_period_end"):
+                    m.current_period_end = datetime.utcfromtimestamp(sub["current_period_end"])
+                if sub.get("customer"):
+                    m.stripe_customer_id = sub["customer"]
+                db.session.commit()
+            return "ok", 200
+
+        if etype == "customer.subscription.deleted":
+            sub = event["data"]["object"]
+            sub_id = sub.get("id")
+            m = M.query.filter_by(stripe_subscription_id=sub_id).first()
+            if m:
+                db.session.delete(m)
+                db.session.commit()
+            return "ok", 200
 
         if etype == "payment_intent.succeeded":
             # we’ll still reduce inventory here (idempotent) but skip email
@@ -708,51 +917,25 @@ def remove_from_cart(product_id):
 
 @main.route('/store', methods=['GET'])
 def store():
-    return render_template('store.html')
+    """Redirect to products (singles search page removed)."""
+    return redirect(url_for('main.products'))
 
 @main.route('/store/card-search', methods=['GET'])
 def store_card_search():
-    card_name = request.args.get('card_name', '').strip()  # Ensure trimming spaces
-    if not card_name:
-        return jsonify({'error': 'Card name is required.'})  # Return error if no card name provided
-
-    # Call Scryfall API
-    url = f'https://api.scryfall.com/cards/search?q={card_name}'
-    response = requests.get(url)
-
-    if response.status_code != 200:
-        return jsonify({'error': 'Failed to fetch from Scryfall'})
-
-    data = response.json()
-    results = []
-    for card in data.get('data', [])[:5]:  # Limit to top 5 results
-        card_info = {
-            'name': card.get('name'),
-            'image': card.get('image_uris', {}).get('normal', '') if card.get('image_uris') else '',
-            'price': card.get('prices', {}).get('usd', 'N/A')
-            
-        }
-
-        # Check if the product exists in the database
-        product = Product.query.filter_by(product_name=card_info['name']).first()
-
-        # Check if the product exists in the database
-        if product:
-            # Override with database price and quantity
-            card_info['price'] = product.price
-            card_info['quantity'] = product.quantity
-            card_info['out_of_stock'] = product.quantity == 0
-            card_info['id'] = product.id  # Add product ID here
-        else:
-            # If the product is not found, set the quantity to 0 and mark as out of stock
-            card_info['price'] = 'NA'  # Or whatever default price you'd like to set
-            card_info['quantity_in_stock'] = 0
-            card_info['out_of_stock'] = True
+    """Singles search removed; return empty results."""
+    return jsonify([])
 
 
-        results.append(card_info)
+@main.route('/courses')
+def courses():
+    """Courses page (personal page)."""
+    return render_template('courses.html')
 
-    return jsonify(results)
+
+@main.route('/cv')
+def cv():
+    """CV / resume page."""
+    return render_template('cv.html')
 
 @main.route('/add_to_cart', methods=['POST'])
 def add_to_cart_route():
