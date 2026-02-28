@@ -1,0 +1,136 @@
+{% extends "navbar.html" %}
+
+{% block title %}Premium Memberships{% endblock %}
+
+{% block content %}
+<section class="py-5" style="margin-top: 80px;">
+  <div class="container py-4">
+    <h1 class="text-center mb-2">Premium Memberships</h1>
+    <p class="text-center text-muted mb-5">Choose the tier that fits you. Cancel anytime.</p>
+
+    {% if membership %}
+    <div class="row justify-content-center mb-5">
+      <div class="col-lg-8">
+        <div class="card shadow-sm border-success">
+          <div class="card-header bg-dark text-white d-flex align-items-center justify-content-between">
+            <span><i class="bi bi-star-fill text-warning mr-2"></i>Your membership: {{ tier_labels.get(membership.tier, membership.tier) }}</span>
+            <span class="badge badge-success">Active</span>
+          </div>
+          <div class="card-body">
+            {% if membership.current_period_end %}
+            <p class="text-muted mb-3">Current period ends: {{ membership.current_period_end.strftime('%B %d, %Y') if membership.current_period_end else '—' }}</p>
+            {% endif %}
+            <div class="d-flex flex-wrap gap-2 justify-content-center">
+              <a href="{{ url_for('main.premium_portal') }}" class="button">Manage subscription</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <h2 class="text-center h5 mb-4">Upgrade or change plan</h2>
+    {% endif %}
+
+    <div class="row justify-content-center">
+      <!-- Early Bird Gold - $15/mo, 10 spots -->
+      <div class="col-md-6 col-lg-4 mb-4">
+        <div class="card h-100 shadow-sm border-warning">
+          <div class="card-header bg-dark text-white text-center py-3">
+            <h5 class="mb-0">Early Bird Gold</h5>
+            <p class="mb-0 small text-warning">First 10 loyal fans only</p>
+          </div>
+          <div class="card-body d-flex flex-column">
+            <p class="display-4 text-center mb-2">$15<span class="h5 text-muted">/mo</span></p>
+            {% if early_bird_spots_left is not none and early_bird_spots_left <= 0 %}
+              <p class="text-center text-danger font-weight-bold mb-3">Sold out</p>
+            {% elif early_bird_spots_left is not none %}
+              <p class="text-center text-muted small mb-3">{{ early_bird_spots_left }} of 10 spots left</p>
+            {% else %}
+              <p class="text-center text-muted small mb-3">Limited to 10 spots</p>
+            {% endif %}
+            <ul class="list-unstyled mb-4">
+              <li class="mb-2"><i class="bi bi-check-circle-fill text-success mr-2"></i>Group chat with me</li>
+              <li class="mb-2"><i class="bi bi-check-circle-fill text-success mr-2"></i>Ad-free videos on my website</li>
+              <li class="mb-2"><i class="bi bi-check-circle-fill text-success mr-2"></i>Exclusive content</li>
+              <li class="mb-2"><i class="bi bi-check-circle-fill text-success mr-2"></i>Signed copy of my book when it drops</li>
+            </ul>
+            {% if membership and membership.tier == 'early_bird_gold' %}
+              <p class="text-center text-success font-weight-bold mb-0 mt-auto">Current plan</p>
+            {% elif membership and membership.tier == 'regular' %}
+              <form method="POST" action="{{ url_for('main.create_membership_checkout_session') }}" class="mt-auto">
+                {{ form.hidden_tag() }}
+                <input type="hidden" name="tier" value="early_bird_gold">
+                <button type="submit" class="button w-100">Upgrade</button>
+              </form>
+            {% else %}
+              <form method="POST" action="{{ url_for('main.create_membership_checkout_session') }}" class="mt-auto">
+                {{ form.hidden_tag() }}
+                <input type="hidden" name="tier" value="early_bird_gold">
+                <button type="submit" class="button w-100" {% if early_bird_spots_left is not none and early_bird_spots_left <= 0 %}disabled{% endif %}>
+                  {% if early_bird_spots_left is not none and early_bird_spots_left <= 0 %}Sold out{% else %}Subscribe{% endif %}
+                </button>
+              </form>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+
+      <!-- Regular Member -->
+      <div class="col-md-6 col-lg-4 mb-4">
+        <div class="card h-100 shadow-sm">
+          <div class="card-header bg-dark text-white text-center py-3">
+            <h5 class="mb-0">Regular Member</h5>
+          </div>
+          <div class="card-body d-flex flex-column">
+            <p class="display-4 text-center mb-2">${{ regular_member_price }}<span class="h5 text-muted">/mo</span></p>
+            <ul class="list-unstyled mb-4">
+              <li class="mb-2"><i class="bi bi-check-circle-fill text-success mr-2"></i>Exclusive content</li>
+              <li class="mb-2"><i class="bi bi-check-circle-fill text-success mr-2"></i>Ad-free videos on my website</li>
+            </ul>
+            {% if membership and membership.tier == 'regular' %}
+              <p class="text-center text-success font-weight-bold mb-0 mt-auto">Current plan</p>
+            {% else %}
+              <form method="POST" action="{{ url_for('main.create_membership_checkout_session') }}" class="mt-auto">
+                {{ form.hidden_tag() }}
+                <input type="hidden" name="tier" value="regular">
+                <button type="submit" class="button w-100">{% if membership %}Downgrade{% else %}Subscribe{% endif %}</button>
+              </form>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+
+      <!-- Gold (non-early bird) - $100/mo -->
+      <div class="col-md-6 col-lg-4 mb-4">
+        <div class="card h-100 shadow-sm border-warning">
+          <div class="card-header bg-dark text-white text-center py-3">
+            <h5 class="mb-0">Gold Membership</h5>
+          </div>
+          <div class="card-body d-flex flex-column">
+            <p class="display-4 text-center mb-2">$100<span class="h5 text-muted">/mo</span></p>
+            <ul class="list-unstyled mb-4">
+              <li class="mb-2"><i class="bi bi-check-circle-fill text-success mr-2"></i>Group chat with me</li>
+              <li class="mb-2"><i class="bi bi-check-circle-fill text-success mr-2"></i>Ad-free videos on my website</li>
+              <li class="mb-2"><i class="bi bi-check-circle-fill text-success mr-2"></i>Exclusive content</li>
+            </ul>
+            {% if membership and membership.tier == 'gold' %}
+              <p class="text-center text-success font-weight-bold mb-0 mt-auto">Current plan</p>
+            {% elif membership %}
+              <form method="POST" action="{{ url_for('main.create_membership_checkout_session') }}" class="mt-auto">
+                {{ form.hidden_tag() }}
+                <input type="hidden" name="tier" value="gold">
+                <button type="submit" class="button w-100">Upgrade</button>
+              </form>
+            {% else %}
+              <form method="POST" action="{{ url_for('main.create_membership_checkout_session') }}" class="mt-auto">
+                {{ form.hidden_tag() }}
+                <input type="hidden" name="tier" value="gold">
+                <button type="submit" class="button w-100">Subscribe</button>
+              </form>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}

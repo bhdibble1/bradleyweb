@@ -31,6 +31,9 @@ instance/
 # Node (if ever)
 node_modules/
 
+# Local project folders
+BradleyWebsite/
+
 # Build / dist
 build/
 dist/

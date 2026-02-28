@@ -1,0 +1,115 @@
+{% extends "navbar.html" %}
+
+{% block title %}Home{% endblock %}
+
+{% block content %}
+<section class="channel-hero">
+  <div class="container py-4 py-md-5">
+    <div class="row align-items-center g-4 g-lg-5">
+      <div class="col-md-5 col-lg-4">
+        <img src="https://res.cloudinary.com/dzt95pn0s/image/upload/v1756435870/Headshot_obpd0v.jpg"
+             alt="Bradley"
+             class="channel-hero__img img-fluid">
+      </div>
+      <div class="col-md-7 col-lg-8">
+        <h1 class="channel-hero__title">Hi, I'm Bradley.</h1>
+        <p class="channel-hero__tagline">
+          Creator, MTG enthusiast, and founder of 5 Star Mint.
+        </p>
+        <ul class="channel-hero__bullets list-unstyled">
+          <li>I'm <strong>Bradley</strong>, founder of <strong>5 Star Mint</strong>. I handle most sales, answer every email, and love connecting with the community.</li>
+          <li>I graduated from the <strong>University of Oregon</strong> (Neuroscience, Chemistry minor). When I'm not sorting cards or filming, I'm rock climbing, hiking, or surfing.</li>
+          <li>Questions about an order or want to sell your collection? <a href="mailto:5starmintllc@gmail.com" class="details-link">Contact me</a> — I'd love to help.</li>
+        </ul>
+        <a href="{{ url_for('main.products') }}" class="button">Browse</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="channel-cards">
+  <div class="container py-4 py-md-5">
+    <div class="row g-4">
+      <div class="col-md-6 col-lg-3">
+        <div class="channel-card">
+          <h3 class="channel-card__title">Store</h3>
+          <p class="channel-card__text">Books and merch all in one place.</p>
+          <a href="{{ url_for('main.products') }}" class="button">Browse</a>
+        </div>
+      </div>
+      <div class="col-md-6 col-lg-3">
+        <div class="channel-card">
+          <h3 class="channel-card__title">Free Resources</h3>
+          <p class="channel-card__text">Check out all of the resources I have for free! This is a sneak peak at what you could have with premium</p>
+          <a href="{{ url_for('main.cv') }}" class="button">Find out more</a>
+        </div>
+      </div>
+      <div class="col-md-6 col-lg-3">
+        <div class="channel-card">
+          <h3 class="channel-card__title">Premium</h3>
+          <p class="channel-card__text">Exclusive content, ad-free videos, courses and more.</p>
+          <a href="{{ url_for('main.premium') }}" class="button">Join Premium</a>
+        </div>
+      </div>
+      <div class="col-md-6 col-lg-3">
+        <div class="channel-card">
+          <h3 class="channel-card__title">Courses</h3>
+          <p class="channel-card__text">Learning and courses: coming soon.</p>
+          <a href="{{ url_for('main.courses') }}" class="button">View Courses</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="channel-book">
+  <div class="container py-4 py-md-5">
+    <div class="row align-items-center g-4 g-lg-5">
+      <div class="col-md-4 text-center">
+        <div class="channel-book__placeholder mx-auto">Book cover</div>
+      </div>
+      <div class="col-md-8">
+        <h2 class="channel-book__title">The Wayside: Stories of Those Left Behind</h2>
+        <p class="channel-book__sub">Preorder my book — stories of those left behind.</p>
+        <ul class="channel-book__list">
+          <li>Stories that stick with you</li>
+          <li>Available for preorder now</li>
+        </ul>
+        <a href="{{ url_for('main.products') }}" class="button button--light">Find out more</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="channel-socials">
+  <div class="container py-4 py-md-5 text-center">
+    <h2 class="channel-socials__title">Find Me Online</h2>
+    <p class="channel-socials__sub">Subscribe, follow, and say hi on your favorite platform.</p>
+    <div class="channel-socials__links">
+      <a href="https://youtube.com" target="_blank" rel="noopener" class="btn btn-outline-danger btn-lg channel-socials__link" aria-label="YouTube">
+        <i class="bi bi-youtube channel-socials__icon"></i>
+        <span>YouTube</span>
+      </a>
+      <a href="https://instagram.com/5starmintllc" target="_blank" rel="noopener" class="btn btn-outline-secondary btn-lg channel-socials__link" aria-label="Instagram">
+        <i class="bi bi-instagram channel-socials__icon"></i>
+        <span>Instagram</span>
+      </a>
+      <a href="https://x.com" target="_blank" rel="noopener" class="btn btn-outline-dark btn-lg channel-socials__link" aria-label="X (Twitter)">
+        <i class="bi bi-twitter-x channel-socials__icon"></i>
+        <span>X</span>
+      </a>
+      <a href="mailto:5starmintllc@gmail.com" class="btn btn-outline-primary btn-lg channel-socials__link" aria-label="Business Email">
+        <i class="bi bi-envelope channel-socials__icon"></i>
+        <span>Business Email</span>
+      </a>
+    </div>
+  </div>
+</section>
+
+<section class="channel-shop-cta">
+  <div class="container">
+    <p class="channel-shop-cta__text mb-0">Shop merch & more</p>
+    <a href="{{ url_for('main.products') }}" class="button button--light">Browse</a>
+  </div>
+</section>
+{% endblock %}
