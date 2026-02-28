@@ -6,21 +6,27 @@ try:
 except Exception:
     pass
 
+import inspect
 import os
 from flask import redirect, url_for, request
 from flask_login import current_user
 from flask_admin import Admin, AdminIndexView
 from flask_admin.contrib.sqla import ModelView
-try:
-    from flask_admin.theme import Bootstrap4Theme
-    _admin_theme = {"theme": Bootstrap4Theme()}
-except ImportError:
+
+# Flask-Admin 2.x removed template_mode; 1.x has it. Only pass args the installed version accepts.
+_admin_kw = {}
+if "template_mode" in inspect.signature(Admin.__init__).parameters:
+    _admin_kw["template_mode"] = "bootstrap4"
+else:
     try:
-        from flask_admin.bootstrap4 import Bootstrap4Theme
-        _admin_theme = {"theme": Bootstrap4Theme()}
+        from flask_admin.theme import Bootstrap4Theme
+        _admin_kw["theme"] = Bootstrap4Theme()
     except ImportError:
-        # Flask-Admin 2.x doesn't accept template_mode; default is Bootstrap4. Pass nothing.
-        _admin_theme = {}
+        try:
+            from flask_admin.bootstrap4 import Bootstrap4Theme
+            _admin_kw["theme"] = Bootstrap4Theme()
+        except ImportError:
+            pass  # 2.x default is Bootstrap4
 
 from SS import create_app
 from SS.models import db, Product, User, Order, OrderItem
@@ -61,7 +67,7 @@ admin = Admin(
     app,
     name="Admin Panel",
     index_view=SecureAdminIndexView(url="/admin", name="Dashboard"),
-    **_admin_theme,
+    **_admin_kw,
 )
 
 # Secure all model views (no custom form_columns for Product to avoid WTForms flags bug)
