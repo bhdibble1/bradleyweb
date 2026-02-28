@@ -15,7 +15,12 @@ try:
     from flask_admin.theme import Bootstrap4Theme
     _admin_theme = {"theme": Bootstrap4Theme()}
 except ImportError:
-    _admin_theme = {"template_mode": "bootstrap4"}
+    try:
+        from flask_admin.bootstrap4 import Bootstrap4Theme
+        _admin_theme = {"theme": Bootstrap4Theme()}
+    except ImportError:
+        # Flask-Admin 2.x doesn't accept template_mode; default is Bootstrap4. Pass nothing.
+        _admin_theme = {}
 
 from SS import create_app
 from SS.models import db, Product, User, Order, OrderItem
