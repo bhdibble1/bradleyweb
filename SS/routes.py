@@ -1,5 +1,5 @@
 from functools import wraps
-from flask import Blueprint, render_template, redirect, url_for, request, flash, session, jsonify, current_app
+from flask import Blueprint, render_template, redirect, url_for, request, flash, session, jsonify, current_app, send_from_directory
 from sqlalchemy import func, or_
 from SS.models import db, User, bcrypt, Product, Order, OrderItem, Membership, MailingListEntry
 from SS.forms import RegistrationForm, LoginForm, ForgotPasswordForm, ResetPasswordForm, QuitNicotineGuideForm, PremiumCSRFForm
@@ -50,6 +50,17 @@ def project_page(slug):
     if slug not in PROJECT_SLUGS:
         return redirect(url_for('main.home'))
     return render_template("project_page.html", project_name=PROJECT_SLUGS[slug], slug=slug)
+
+
+@main.route("/transcribe")
+@main.route("/transcribe/")
+@main.route("/transcribe/<path:path>")
+def transcribe(path=None):
+    """Serve the Transcribe² SPA (static app expects base path /transcribe)."""
+    transcribe_dir = os.path.join(current_app.static_folder, "Transcribe")
+    if path is None or path == "":
+        return send_from_directory(transcribe_dir, "index.html")
+    return send_from_directory(transcribe_dir, path)
 
 
 def _guide_email_html(download_url, from_name):

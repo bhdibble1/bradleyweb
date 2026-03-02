@@ -5,6 +5,18 @@
 {% block content %}
 <div class="container py-5" style="margin-top: 80px;">
   <h1 class="mb-4">{{ project_name }}</h1>
+  {% if slug == 'music' %}
+  <p class="lead text-muted mb-4">Tools and projects for music.</p>
+  <div class="card shadow-sm border-0 rounded-3 overflow-hidden mb-3" style="max-width: 32rem;">
+    <div class="card-body p-4">
+      <h2 class="h5 mb-2">Transcribe²</h2>
+      <p class="text-muted small mb-3">Slow down audio while keeping the pitch. Perfect for learning songs or transcribing by ear.</p>
+      <a href="{{ url_for('main.transcribe') }}" class="button" target="_blank" rel="noopener">Open Transcribe²</a>
+    </div>
+  </div>
+  <p class="text-muted small">More coming soon!</p>
+  {% else %}
   <p class="lead text-muted">Coming Soon!</p>
+  {% endif %}
 </div>
 {% endblock %}
