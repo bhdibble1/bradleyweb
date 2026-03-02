@@ -17,6 +17,21 @@ from datetime import datetime
 main = Blueprint('main', __name__)
 
 
+def _add_mailing_list_entry_if_new(email: str, source: str) -> bool:
+    """Add a MailingListEntry only if this email+source is not already present. Returns True if added."""
+    normalized = email.strip().lower()
+    if MailingListEntry.query.filter_by(email=normalized, source=source).first():
+        return False
+    entry = MailingListEntry(email=normalized, source=source)
+    db.session.add(entry)
+    try:
+        db.session.commit()
+        return True
+    except Exception:
+        db.session.rollback()
+        return False
+
+
 def membership_required(*allowed_tiers):
     """
     Decorator: require an active membership. If allowed_tiers is given, the membership's tier must be one of them.
@@ -93,18 +108,13 @@ def _guide_email_html(download_url, from_name):
 def quit_nicotine_guide():
     form = QuitNicotineGuideForm()
     download_url = os.environ.get("GUIDE_DOWNLOAD_URL", "").strip()
-    from_name = os.environ.get("FROM_NAME", "5 Star Mint")
+    from_name = os.environ.get("FROM_NAME", "Bradley Dibble")
     book_image_url = os.environ.get("GUIDE_BOOK_IMAGE_URL", "").strip()
 
     # Logged-in user clicked "Email me the link" (no direct download URL configured)
     if request.method == "POST" and current_user.is_authenticated and request.form.get("send_to_account"):
         email = current_user.email
-        try:
-            entry = MailingListEntry(email=email, source="quit_nicotine_guide")
-            db.session.add(entry)
-            db.session.commit()
-        except Exception:
-            db.session.rollback()
+        _add_mailing_list_entry_if_new(email, "quit_nicotine_guide")
         html = _guide_email_html(download_url, from_name)
         send_email(to=email, subject="Your free 30-day guide to quit nicotine", html=html, from_name=from_name)
         flash("Check your email for the download link.", "success")
@@ -112,14 +122,7 @@ def quit_nicotine_guide():
 
     if form.validate_on_submit():
         email = form.email.data.strip().lower()
-        # Save to mailing list (non-logged-in signups)
-        try:
-            entry = MailingListEntry(email=email, source="quit_nicotine_guide")
-            db.session.add(entry)
-            db.session.commit()
-        except Exception:
-            db.session.rollback()
-            # Continue anyway; still send the email
+        _add_mailing_list_entry_if_new(email, "quit_nicotine_guide")
         html = _guide_email_html(download_url, from_name)
         sent = send_email(to=email, subject="Your free 30-day guide to quit nicotine", html=html, from_name=from_name)
         if sent:
@@ -134,6 +137,86 @@ def quit_nicotine_guide():
         "quit_nicotine_guide.html",
         form=form,
         book_image_url=book_image_url or None,
+        show_download=show_download,
+        download_url=download_url or None,
+    )
+
+
+def _nremt_email_html(download_url, from_name, has_attachment=False):
+    """HTML for the NREMT Anki deck email."""
+    if download_url:
+        cta = f'''
+        <table width="100%" cellpadding="0" cellspacing="0" style="margin: 24px 0;">
+          <tr>
+            <td align="center">
+              <a href="{download_url}" style="display:inline-block;background:#0f0f0f;color:#ffffff;padding:14px 28px;text-decoration:none;border-radius:10px;font-weight:600;font-size:16px;">Download the deck</a>
+            </td>
+          </tr>
+        </table>
+        <p style="color:#6b7280;font-size:14px;margin-top:16px;">If the button doesn't work, copy and paste this link into your browser:</p>
+        <p style="word-break:break-all;font-size:14px;"><a href="{download_url}" style="color:#2563eb;">{download_url}</a></p>
+        '''
+    elif has_attachment:
+        cta = '<p style="margin-top:16px;">Your NREMT Anki deck is attached to this email. Download the attachment and import it into Anki.</p>'
+    else:
+        cta = '<p style="margin-top:16px;">We\'ll send your deck to this address shortly.</p>'
+    return f"""
+    <div style="font-family:system-ui,-apple-system,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#1f2937;">
+      <h1 style="font-size:24px;font-weight:700;margin-bottom:8px;">Your NREMT Anki deck</h1>
+      <p style="font-size:16px;line-height:1.6;color:#4b5563;">Thanks for signing up. Here's your NREMT Anki deck.</p>
+      {cta}
+      <p style="margin-top:32px;font-size:14px;color:#9ca3af;">— {from_name}</p>
+    </div>
+    """
+
+
+@main.route("/free-nremt-anki-deck", methods=["GET", "POST"])
+def nremt_anki_deck():
+    form = QuitNicotineGuideForm()
+    download_url = os.environ.get("NREMT_ANKI_DOWNLOAD_URL", "").strip()
+    file_path = os.environ.get("NREMT_ANKI_FILE_PATH", "").strip()
+    from_name = os.environ.get("FROM_NAME", "Bradley Dibble")
+
+    def _get_attachments():
+        """If NREMT_ANKI_FILE_PATH is set and file exists, return Resend attachments list."""
+        if not file_path or not os.path.isfile(file_path):
+            return None
+        try:
+            import base64
+            with open(file_path, "rb") as f:
+                content = base64.b64encode(f.read()).decode("ascii")
+            filename = os.path.basename(file_path)
+            return [{"filename": filename, "content": content}]
+        except Exception as e:
+            print(f"⚠️ Could not read NREMT Anki file at {file_path}: {e}")
+            return None
+
+    # Logged-in user clicked "Email me the deck"
+    if request.method == "POST" and current_user.is_authenticated and request.form.get("send_to_account"):
+        email = current_user.email
+        _add_mailing_list_entry_if_new(email, "nremt_anki_deck")
+        attachments = _get_attachments()
+        html = _nremt_email_html(download_url, from_name, has_attachment=bool(attachments))
+        send_email(to=email, subject="Your NREMT Anki deck", html=html, from_name=from_name, attachments=attachments)
+        flash("Check your email for the deck.", "success")
+        return redirect(url_for("main.nremt_anki_deck"))
+
+    if form.validate_on_submit():
+        email = form.email.data.strip().lower()
+        _add_mailing_list_entry_if_new(email, "nremt_anki_deck")
+        attachments = _get_attachments()
+        html = _nremt_email_html(download_url, from_name, has_attachment=bool(attachments))
+        sent = send_email(to=email, subject="Your NREMT Anki deck", html=html, from_name=from_name, attachments=attachments)
+        if sent:
+            flash("Check your email for the deck.", "success")
+        else:
+            flash("We received your email. You'll get the deck soon.", "success")
+        return redirect(url_for("main.nremt_anki_deck"))
+
+    show_download = current_user.is_authenticated
+    return render_template(
+        "nremt_anki_deck.html",
+        form=form,
         show_download=show_download,
         download_url=download_url or None,
     )

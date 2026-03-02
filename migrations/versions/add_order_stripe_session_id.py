@@ -22,13 +22,16 @@ def upgrade():
     except OperationalError as e:
         if 'duplicate column' not in str(e).lower():
             raise
-    try:
-        op.create_unique_constraint('uq_order_stripe_session_id', 'order', ['stripe_session_id'])
-    except OperationalError as e:
-        if 'already exists' not in str(e).lower() and 'duplicate' not in str(e).lower():
-            raise
+    # SQLite doesn't support ADD CONSTRAINT; use batch_alter_table
+    with op.batch_alter_table('order', schema=None) as batch_op:
+        try:
+            batch_op.create_unique_constraint('uq_order_stripe_session_id', ['stripe_session_id'])
+        except OperationalError as e:
+            if 'already exists' not in str(e).lower() and 'duplicate' not in str(e).lower():
+                raise
 
 
 def downgrade():
-    op.drop_constraint('uq_order_stripe_session_id', 'order', type_='unique')
+    with op.batch_alter_table('order', schema=None) as batch_op:
+        batch_op.drop_constraint('uq_order_stripe_session_id', type_='unique')
     op.drop_column('order', 'stripe_session_id')

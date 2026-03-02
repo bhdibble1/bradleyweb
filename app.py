@@ -29,7 +29,7 @@ else:
             pass  # 2.x default is Bootstrap4
 
 from SS import create_app
-from SS.models import db, Product, User, Order, OrderItem, Membership
+from SS.models import db, Product, User, Order, OrderItem, Membership, MailingListEntry
 
 app = create_app()
 
@@ -76,6 +76,7 @@ admin.add_view(SecureModelView(Product, db.session))
 admin.add_view(SecureModelView(Order, db.session))
 admin.add_view(SecureModelView(OrderItem, db.session))
 admin.add_view(SecureModelView(Membership, db.session))
+admin.add_view(SecureModelView(MailingListEntry, db.session, name="Mailing list", category="Lists"))
 
 if __name__ == "__main__":
     # Local dev; Render uses gunicorn

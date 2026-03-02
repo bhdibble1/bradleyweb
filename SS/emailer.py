@@ -27,6 +27,7 @@ def send_email(
     from_email: str | None = None,
     from_name: str | None = None,
     reply_to: str | list[str] | None = None,
+    attachments: list[dict] | None = None,
 ) -> bool:
     """
     Send an HTML email via Resend using only `requests`.
@@ -37,6 +38,7 @@ def send_email(
     Notes:
       - `to` can be a string or list of strings
       - `reply_to` can be a string or list
+      - `attachments` optional list of {"filename": str, "content": base64_str}
     """
     api_key = os.environ.get("RESEND_API_KEY")
     if not api_key:
@@ -45,7 +47,7 @@ def send_email(
 
     # Prefer explicit args, fallback to env
     from_email = from_email or os.environ.get("FROM_EMAIL")
-    from_name = from_name or os.environ.get("FROM_NAME", "5 Star Mint")
+    from_name = from_name or os.environ.get("FROM_NAME", "Bradley Dibble")
 
     if not from_email:
         print("⚠️ FROM_EMAIL not set and no from_email argument given; skipping email.")
@@ -75,6 +77,8 @@ def send_email(
     }
     if reply_to_val:
         payload["reply_to"] = reply_to_val
+    if attachments:
+        payload["attachments"] = attachments
 
     try:
         resp = requests.post(
