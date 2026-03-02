@@ -12,8 +12,8 @@
 
         {% if show_download %}
           <p class="lead text-muted mb-4">Your deck is ready.</p>
-          {% if download_url %}
-            <a href="{{ download_url }}" class="button" style="display: inline-block; text-decoration: none;">Download</a>
+          {% if download_available %}
+            <a href="{{ url_for('main.nremt_anki_deck_download') }}" class="button" style="display: inline-block; text-decoration: none;">Download</a>
           {% else %}
             <form method="POST" action="{{ url_for('main.nremt_anki_deck') }}" class="d-inline">
               {{ form.hidden_tag() }}

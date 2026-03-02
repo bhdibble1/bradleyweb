@@ -1,7 +1,7 @@
 from functools import wraps
-from flask import Blueprint, render_template, redirect, url_for, request, flash, session, jsonify, current_app, send_from_directory
+from flask import Blueprint, render_template, redirect, url_for, request, flash, session, jsonify, current_app, send_from_directory, send_file
 from sqlalchemy import func, or_
-from SS.models import db, User, bcrypt, Product, Order, OrderItem, Membership, MailingListEntry
+from SS.models import db, User, bcrypt, Product, Order, OrderItem, Membership, MailingListEntry, AffiliateBook
 from SS.forms import RegistrationForm, LoginForm, ForgotPasswordForm, ResetPasswordForm, QuitNicotineGuideForm, PremiumCSRFForm
 from SS.emailer import send_email
 from flask_login import login_user, current_user, logout_user, login_required
@@ -177,18 +177,26 @@ def nremt_anki_deck():
     file_path = os.environ.get("NREMT_ANKI_FILE_PATH", "").strip()
     from_name = os.environ.get("FROM_NAME", "Bradley Dibble")
 
+    def _resolve_file_path():
+        if not file_path:
+            return ""
+        if os.path.isabs(file_path):
+            return file_path
+        return os.path.join(current_app.root_path, file_path)
+
     def _get_attachments():
         """If NREMT_ANKI_FILE_PATH is set and file exists, return Resend attachments list."""
-        if not file_path or not os.path.isfile(file_path):
+        resolved = _resolve_file_path()
+        if not resolved or not os.path.isfile(resolved):
             return None
         try:
             import base64
-            with open(file_path, "rb") as f:
+            with open(resolved, "rb") as f:
                 content = base64.b64encode(f.read()).decode("ascii")
-            filename = os.path.basename(file_path)
+            filename = os.path.basename(resolved)
             return [{"filename": filename, "content": content}]
         except Exception as e:
-            print(f"⚠️ Could not read NREMT Anki file at {file_path}: {e}")
+            print(f"⚠️ Could not read NREMT Anki file at {resolved}: {e}")
             return None
 
     # Logged-in user clicked "Email me the deck"
@@ -213,13 +221,38 @@ def nremt_anki_deck():
             flash("We received your email. You'll get the deck soon.", "success")
         return redirect(url_for("main.nremt_anki_deck"))
 
+    resolved = _resolve_file_path()
+    download_available = bool(download_url) or (bool(resolved) and os.path.isfile(resolved))
     show_download = current_user.is_authenticated
     return render_template(
         "nremt_anki_deck.html",
         form=form,
         show_download=show_download,
+        download_available=download_available,
         download_url=download_url or None,
     )
+
+
+@main.route("/free-nremt-anki-deck/download", methods=["GET"])
+def nremt_anki_deck_download():
+    """
+    Download endpoint for the NREMT Anki deck.
+    Priority:
+      1) If NREMT_ANKI_DOWNLOAD_URL is set, redirect there (recommended on Render)
+      2) Else, serve file from NREMT_ANKI_FILE_PATH if it exists
+    """
+    download_url = os.environ.get("NREMT_ANKI_DOWNLOAD_URL", "").strip()
+    if download_url:
+        return redirect(download_url)
+
+    file_path = os.environ.get("NREMT_ANKI_FILE_PATH", "").strip()
+    if file_path:
+        resolved = file_path if os.path.isabs(file_path) else os.path.join(current_app.root_path, file_path)
+        if os.path.isfile(resolved):
+            return send_file(resolved, as_attachment=True, download_name=os.path.basename(resolved))
+
+    flash("Download is not available right now. Please request the deck by email instead.", "warning")
+    return redirect(url_for("main.nremt_anki_deck"))
 
 
 EARLY_BIRD_CAPACITY = 10
@@ -1251,6 +1284,18 @@ def store_card_search():
 def courses():
     """Courses listing page."""
     return render_template('courses.html')
+
+
+@main.route("/books")
+def books():
+    """Affiliate books page."""
+    items = (
+        AffiliateBook.query
+        .filter_by(active=True)
+        .order_by(AffiliateBook.sort_order.asc(), AffiliateBook.created_at.desc())
+        .all()
+    )
+    return render_template("books.html", books=items)
 
 
 @main.route('/free-resources')

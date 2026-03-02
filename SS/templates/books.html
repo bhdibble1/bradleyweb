@@ -1,0 +1,49 @@
+{% extends "navbar.html" %}
+
+{% block title %}What I'm reading{% endblock %}
+
+{% block content %}
+<section class="py-5" style="margin-top: 80px;">
+  <div class="container">
+    <h1 class="mb-2">What I'm reading</h1>
+    <p class="text-muted mb-4">Books I’m reading and recommending. Some links may be affiliate links.</p>
+
+    {% if books and books|length %}
+      <div class="row g-4">
+        {% for b in books %}
+          <div class="col-md-6 col-lg-4">
+            <div class="card h-100 shadow-sm border-0 rounded-3 overflow-hidden">
+              <div class="card-body p-4 d-flex flex-column">
+                {% if b.image_url %}
+                  <div class="mb-3 text-center">
+                    <img src="{{ b.image_url }}" alt="{{ b.title }}" class="img-fluid rounded shadow-sm" style="max-height: 220px;">
+                  </div>
+                {% endif %}
+
+                <h2 class="h5 mb-1">{{ b.title }}</h2>
+                {% if b.author %}
+                  <p class="text-muted small mb-2">{{ b.author }}</p>
+                {% endif %}
+                {% if b.description %}
+                  <p class="text-muted small mb-3 flex-grow-1">{{ b.description }}</p>
+                {% else %}
+                  <div class="flex-grow-1"></div>
+                {% endif %}
+
+                <a href="{{ b.amazon_url }}" class="button align-self-start" target="_blank" rel="noopener sponsored">View on Amazon</a>
+              </div>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="card shadow-sm border-0 rounded-3">
+        <div class="card-body p-4">
+          <p class="mb-0 text-muted">No books added yet. Add some in Admin → Affiliate → Books.</p>
+        </div>
+      </div>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}
+

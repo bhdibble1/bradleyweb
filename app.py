@@ -29,7 +29,7 @@ else:
             pass  # 2.x default is Bootstrap4
 
 from SS import create_app
-from SS.models import db, Product, User, Order, OrderItem, Membership, MailingListEntry
+from SS.models import db, Product, User, Order, OrderItem, Membership, MailingListEntry, AffiliateBook
 
 app = create_app()
 
@@ -77,6 +77,25 @@ admin.add_view(SecureModelView(Order, db.session))
 admin.add_view(SecureModelView(OrderItem, db.session))
 admin.add_view(SecureModelView(Membership, db.session))
 admin.add_view(SecureModelView(MailingListEntry, db.session, name="Mailing list", category="Lists"))
+class AffiliateBookModelView(SecureModelView):
+    column_labels = {
+        "title": "Title",
+        "author": "Author",
+        "amazon_url": "Amazon link",
+        "image_url": "Book cover image (URL)",
+        "description": "Description",
+        "active": "Active",
+        "sort_order": "Sort order",
+        "created_at": "Created",
+    }
+    column_list = ["title", "author", "active", "sort_order", "created_at"]
+    form_columns = ["title", "author", "amazon_url", "image_url", "description", "active", "sort_order"]
+    form_args = {
+        "image_url": {"label": "Book cover image (URL)", "description": "Paste a direct image URL (e.g. from Amazon or Cloudinary)."},
+    }
+
+
+admin.add_view(AffiliateBookModelView(AffiliateBook, db.session, name="Books", category="Affiliate"))
 
 if __name__ == "__main__":
     # Local dev; Render uses gunicorn

@@ -42,7 +42,7 @@ def send_email(
     """
     api_key = os.environ.get("RESEND_API_KEY")
     if not api_key:
-        print("⚠️ RESEND_API_KEY not set; skipping email.")
+        print("⚠️ [EMAIL] RESEND_API_KEY not set; skipping email.", flush=True)
         return False
 
     # Prefer explicit args, fallback to env
@@ -50,7 +50,7 @@ def send_email(
     from_name = from_name or os.environ.get("FROM_NAME", "Bradley Dibble")
 
     if not from_email:
-        print("⚠️ FROM_EMAIL not set and no from_email argument given; skipping email.")
+        print("⚠️ [EMAIL] FROM_EMAIL not set; skipping email.", flush=True)
         return False
 
     # Guard against using Gmail/etc. (Resend requires your verified domain)
@@ -90,14 +90,13 @@ def send_email(
             json=payload,
             timeout=20,
         )
-        print("📨 Resend response:", resp.status_code, resp.text[:500])
+        print(f"📨 [EMAIL] Resend response: {resp.status_code} {resp.text[:500]}", flush=True)
 
         if resp.status_code == 403 and "domain is not verified" in resp.text.lower():
-            print("🔎 Your sender domain isn’t verified in Resend. Verify DNS first.")
+            print("🔎 Your sender domain isn’t verified in Resend. Add and verify domain in Resend dashboard.", flush=True)
         if resp.status_code == 422 and "Invalid `from` field" in resp.text:
-            print("🔎 Fix FROM format: use `orders@send.yourdomain.com` or `Name <orders@send.yourdomain.com>`.")
-
+            print("🔎 [EMAIL] Invalid FROM. Use an address on your verified domain, e.g. noreply@bdibble.com", flush=True)
         return resp.ok
     except requests.RequestException as e:
-        print("❌ Resend request failed:", e)
+        print(f"❌ [EMAIL] Resend request failed: {e}", flush=True)
         return False

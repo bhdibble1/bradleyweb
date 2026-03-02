@@ -107,3 +107,19 @@ class MailingListEntry(db.Model):
 
     def __repr__(self):
         return f"<MailingListEntry {self.email} source={self.source}>"
+
+
+class AffiliateBook(db.Model):
+    """Book recommendations with affiliate links (shown on /books)."""
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(255), nullable=False)
+    author = db.Column(db.String(255), nullable=True)
+    amazon_url = db.Column(db.String(2048), nullable=False)
+    image_url = db.Column(db.String(2048), nullable=True)
+    description = db.Column(db.String(1024), nullable=True)
+    active = db.Column(db.Boolean, nullable=False, default=True)
+    sort_order = db.Column(db.Integer, nullable=False, default=0)
+    created_at = db.Column(db.DateTime, nullable=False, default=db.func.current_timestamp())
+
+    def __repr__(self):
+        return f"<AffiliateBook {self.title}>"
