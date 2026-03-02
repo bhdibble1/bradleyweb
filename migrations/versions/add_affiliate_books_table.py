@@ -24,8 +24,8 @@ def upgrade():
         sa.Column("amazon_url", sa.String(length=2048), nullable=False),
         sa.Column("image_url", sa.String(length=2048), nullable=True),
         sa.Column("description", sa.String(length=1024), nullable=True),
-        sa.Column("active", sa.Boolean(), nullable=False, server_default=sa.text("1")),
-        sa.Column("sort_order", sa.Integer(), nullable=False, server_default="0"),
+        sa.Column("active", sa.Boolean(), nullable=False, server_default=sa.text("true")),
+        sa.Column("sort_order", sa.Integer(), nullable=False, server_default=sa.text("0")),
         sa.Column("created_at", sa.DateTime(), nullable=False, server_default=sa.func.current_timestamp()),
         sa.PrimaryKeyConstraint("id"),
     )
