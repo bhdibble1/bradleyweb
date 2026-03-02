@@ -1,7 +1,7 @@
 from functools import wraps
 from flask import Blueprint, render_template, redirect, url_for, request, flash, session, jsonify, current_app
 from sqlalchemy import func, or_
-from SS.models import db, User, bcrypt, Product, Order, OrderItem, Membership
+from SS.models import db, User, bcrypt, Product, Order, OrderItem, Membership, MailingListEntry
 from SS.forms import RegistrationForm, LoginForm, ForgotPasswordForm, ResetPasswordForm, QuitNicotineGuideForm, PremiumCSRFForm
 from SS.emailer import send_email
 from flask_login import login_user, current_user, logout_user, login_required
@@ -52,34 +52,80 @@ def project_page(slug):
     return render_template("project_page.html", project_name=PROJECT_SLUGS[slug], slug=slug)
 
 
+def _guide_email_html(download_url, from_name):
+    """Nicer HTML for the quit nicotine guide email."""
+    if download_url:
+        cta = f'''
+        <table width="100%" cellpadding="0" cellspacing="0" style="margin: 24px 0;">
+          <tr>
+            <td align="center">
+              <a href="{download_url}" style="display:inline-block;background:#0f0f0f;color:#ffffff;padding:14px 28px;text-decoration:none;border-radius:10px;font-weight:600;font-size:16px;">Download the guide</a>
+            </td>
+          </tr>
+        </table>
+        <p style="color:#6b7280;font-size:14px;margin-top:16px;">If the button doesn't work, copy and paste this link into your browser:</p>
+        <p style="word-break:break-all;font-size:14px;"><a href="{download_url}" style="color:#2563eb;">{download_url}</a></p>
+        '''
+    else:
+        cta = '<p style="margin-top:16px;">We\'ll send your guide to this address shortly.</p>'
+    return f"""
+    <div style="font-family:system-ui,-apple-system,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#1f2937;">
+      <h1 style="font-size:24px;font-weight:700;margin-bottom:8px;">Your free 30-day guide to quit nicotine</h1>
+      <p style="font-size:16px;line-height:1.6;color:#4b5563;">Thanks for signing up. Here's your link to get the guide.</p>
+      {cta}
+      <p style="margin-top:32px;font-size:14px;color:#9ca3af;">— {from_name}</p>
+    </div>
+    """
+
+
 @main.route("/free-quit-nicotine-guide", methods=["GET", "POST"])
 def quit_nicotine_guide():
     form = QuitNicotineGuideForm()
+    download_url = os.environ.get("GUIDE_DOWNLOAD_URL", "").strip()
+    from_name = os.environ.get("FROM_NAME", "5 Star Mint")
+    book_image_url = os.environ.get("GUIDE_BOOK_IMAGE_URL", "").strip()
+
+    # Logged-in user clicked "Email me the link" (no direct download URL configured)
+    if request.method == "POST" and current_user.is_authenticated and request.form.get("send_to_account"):
+        email = current_user.email
+        try:
+            entry = MailingListEntry(email=email, source="quit_nicotine_guide")
+            db.session.add(entry)
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+        html = _guide_email_html(download_url, from_name)
+        send_email(to=email, subject="Your free 30-day guide to quit nicotine", html=html, from_name=from_name)
+        flash("Check your email for the download link.", "success")
+        return redirect(url_for("main.quit_nicotine_guide"))
+
     if form.validate_on_submit():
-        email = form.email.data.strip()
-        download_url = os.environ.get("GUIDE_DOWNLOAD_URL", "").strip()
-        from_name = os.environ.get("FROM_NAME", "5 Star Mint")
-        if download_url:
-            html = f"""
-            <p>Thanks for signing up. Here's your free 30-day guide to quit nicotine.</p>
-            <p><a href="{download_url}" style="display:inline-block;background:#141414;color:#fff;padding:12px 24px;text-decoration:none;border-radius:8px;">Download the guide</a></p>
-            <p>If the button doesn't work, copy this link: {download_url}</p>
-            """
-        else:
-            html = "<p>You're on the list. We'll send your free 30-day quit nicotine guide to this email shortly.</p>"
-        sent = send_email(
-            to=email,
-            subject="Your free 30-day guide to quit nicotine",
-            html=html,
-            from_name=from_name,
-        )
+        email = form.email.data.strip().lower()
+        # Save to mailing list (non-logged-in signups)
+        try:
+            entry = MailingListEntry(email=email, source="quit_nicotine_guide")
+            db.session.add(entry)
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            # Continue anyway; still send the email
+        html = _guide_email_html(download_url, from_name)
+        sent = send_email(to=email, subject="Your free 30-day guide to quit nicotine", html=html, from_name=from_name)
         if sent:
             flash("Check your email for the download link.", "success")
         else:
             flash("We received your email. You'll get the guide soon.", "success")
         return redirect(url_for("main.quit_nicotine_guide"))
-    book_image_url = os.environ.get("GUIDE_BOOK_IMAGE_URL", "").strip()
-    return render_template("quit_nicotine_guide.html", form=form, book_image_url=book_image_url or None)
+
+    # Logged-in users see Download (use link if we have it, else they can request email)
+    show_download = current_user.is_authenticated
+    return render_template(
+        "quit_nicotine_guide.html",
+        form=form,
+        book_image_url=book_image_url or None,
+        show_download=show_download,
+        download_url=download_url or None,
+    )
 
 
 EARLY_BIRD_CAPACITY = 10
@@ -540,7 +586,14 @@ def cart():
 @main.route('/account', methods=['GET'])
 @login_required
 def account():
-    return render_template('account.html')
+    membership = _get_user_membership(current_user.id)
+    latest_membership = _get_user_latest_membership(current_user.id)
+    return render_template(
+        "account.html",
+        membership=membership,
+        latest_membership=latest_membership,
+        tier_labels=TIER_LABELS,
+    )
 
 @main.route('/checkout', methods=['GET', 'POST'])
 def checkout():

@@ -96,3 +96,14 @@ class Membership(db.Model):
 
     def __repr__(self):
         return f"<Membership {self.tier} user={self.user_id} status={self.status}>"
+
+
+class MailingListEntry(db.Model):
+    """Emails collected for mailing list (e.g. quit nicotine guide signups)."""
+    id = db.Column(db.Integer, primary_key=True)
+    email = db.Column(db.String(255), nullable=False)
+    source = db.Column(db.String(64), nullable=False, default="quit_nicotine_guide")
+    created_at = db.Column(db.DateTime, nullable=False, default=db.func.current_timestamp())
+
+    def __repr__(self):
+        return f"<MailingListEntry {self.email} source={self.source}>"

@@ -2,7 +2,7 @@
 <html>
 <head>
     <title>{% block title %}Home{% endblock %}</title>
-    <link rel="icon" href="{{ url_for('static', filename='favicon.png') }}" type="image/png">
+    <link rel="icon" href="{{ url_for('static', filename='favicon-nav.png') }}" type="image/png">
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" /> 
 
@@ -25,7 +25,9 @@
 <body>
 
 <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
-  <a class="navbar-brand padding-l" href="{{ url_for('main.home') }}"></a>
+  <a class="navbar-brand padding-l d-flex align-items-center {% if request.endpoint=='main.home' %}active{% endif %}" href="{{ url_for('main.home') }}">
+    <img src="{{ url_for('static', filename='favicon-nav.png') }}" alt="Home" class="navbar-logo" height="36" width="36">
+  </a>
   <button class="navbar-toggler" type="button" data-toggle="collapse" 
           data-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" 
           aria-expanded="false" aria-label="Toggle navigation">
@@ -34,12 +36,6 @@
 
   <div class="collapse navbar-collapse" id="navbarSupportedContent">
     <ul class="navbar-nav mr-auto">
-      <li class="nav-item">
-        <a class="nav-link {% if request.endpoint=='main.home' %}active{% endif %}" 
-           href="{{ url_for('main.home') }}">
-          Home
-        </a>
-      </li>
       <li class="nav-item">
         <a class="nav-link {% if request.endpoint=='main.products' %}active{% endif %}" 
            href="{{ url_for('main.products') }}">
@@ -114,10 +110,6 @@
   {% endwith %}
 </div>
 
-</body>
-</html>
-
-
 {% block content %}
 <!-- Page‐specific content goes here -->
 {% endblock %}
@@ -136,6 +128,29 @@
         integrity="sha384-wfSDF2E50Y2D1uUdj0O3uMBJnjuUD4Ih7YwaYd1iqfktj0Uod8GCExl3Og8ifwB6"
         crossorigin="anonymous"></script>
 <script>
+document.documentElement.classList.add('js');
 
+document.addEventListener('DOMContentLoaded', function () {
+  var els = document.querySelectorAll('.scroll-animate');
+  if (!els.length) return;
 
+  var reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (reducedMotion) return;
 
+  if (typeof IntersectionObserver === 'undefined') {
+    els.forEach(function (el) { el.classList.add('in-view'); });
+    return;
+  }
+
+  var observer = new IntersectionObserver(function (entries) {
+    entries.forEach(function (entry) {
+      if (entry.isIntersecting) entry.target.classList.add('in-view');
+    });
+  }, { rootMargin: '0px 0px -40px 0px', threshold: 0.1 });
+
+  els.forEach(function (el) { observer.observe(el); });
+});
+</script>
+
+</body>
+</html>

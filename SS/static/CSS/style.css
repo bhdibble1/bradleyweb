@@ -187,11 +187,12 @@ img {
 }
 
 /* ===== NAVBAR ===== */
-.navbar {
+.navbar,
+.navbar.bg-dark {
   position: fixed;
   top: 0;
   width: 100%;
-  background-color: var(--dark-color);
+  background-color: var(--dark-color) !important; /* match .button black #0f0f0f */
   padding: 0.75rem 0;
   z-index: var(--z-fixed);
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06);
@@ -213,6 +214,11 @@ img {
 
 .navbar .nav-link.active {
   color: var(--white-color);
+}
+
+.navbar-logo {
+  display: block;
+  object-fit: contain;
 }
 
 /* ===== CHANNEL HOMEPAGE ===== */
@@ -426,6 +432,36 @@ img {
   text-decoration: none;
 }
 
+/* Scroll-triggered animations (home) */
+.scroll-animate {
+  opacity: 1;
+  transform: none;
+}
+
+.js .scroll-animate {
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 0.5s var(--ease), transform 0.5s var(--ease);
+}
+
+.js .scroll-animate.in-view {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.scroll-animate--delay-1 { transition-delay: 0.1s; }
+.scroll-animate--delay-2 { transition-delay: 0.2s; }
+.scroll-animate--delay-3 { transition-delay: 0.3s; }
+
+@media (prefers-reduced-motion: reduce) {
+  .js .scroll-animate {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+  .js .scroll-animate.in-view { opacity: 1; }
+}
+
 /* Footer CTA */
 .channel-shop-cta {
   padding: var(--space-10) 0;
@@ -589,9 +625,9 @@ img {
   display: none;
 }
 
-/* Custom purple btn (products add to cart) */
+/* Custom purple btn (login, sign up, products add to cart) */
 .custom-btn {
-  background: #4f46e5;
+  background: #3224f0;
   color: var(--white-color);
   border: none;
   border-radius: var(--radius-md);
@@ -602,7 +638,7 @@ img {
 }
 
 .custom-btn:hover {
-  background: #4338ca;
+  background: #2920c8;
   color: var(--white-color);
   transform: translateY(-1px);
 }
